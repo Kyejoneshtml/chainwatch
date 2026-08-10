@@ -1,0 +1,17 @@
+services:
+  bitcoind:
+    image: bitcoin/bitcoin:31.1
+    container_name: bitcoind
+    restart: unless-stopped
+    stop_grace_period: 10m
+    volumes:
+      - bitcoin-data:/home/bitcoin/.bitcoin
+      - ./bitcoin.conf:/config/bitcoin.conf:ro
+    command: -conf=/config/bitcoin.conf
+    ports:
+      - "8333:8333"
+
+volumes:
+  bitcoin-data:
+
+
