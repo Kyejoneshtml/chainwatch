@@ -44,11 +44,10 @@ All borders 1px. No exceptions.
 
 | Token | Hex | Use |
 |---|---|---|
-| `action` | `#1D6FD0` | Primary buttons, links, interactive elements |
-| `action-hover` | `#17579F` | Hover and active states |
-| `action-tint` | `#EFF6FD` | Selected rows, focus backgrounds |
+| `action` | `#111111` | Primary buttons, selected states |
+| `action-disabled` | `#F1F1EE` | Disabled control fill |
 
-Blue is reserved for things the user can act on. It never carries status meaning.
+Actions are near-black. Links are marked by an underline rather than by colour. Severity is the only colour in the interface, which is what makes red unambiguous when it appears.
 
 ### Severity
 
