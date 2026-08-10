@@ -40,3 +40,25 @@ Bitcoin is public but illegible. Chainwatch makes a specific wallet legible in r
 ## Status
 
 Nothing built yet. Update this section as phases complete so the repo history tells the story. Michael's point about documenting the journey is right: the commit log and the doc revisions are the evidence, not just the finished thing.
+
+
+
+## Build log
+
+### Phase 0: standing up the node (10 August 2026)
+
+Mac mini, Apple Silicon, 230 GB free. Docker Desktop, Bitcoin Core 31.1, pruned to 20 GB. Four things broke before it ran, each a different kind of problem.
+
+**Docker Desktop's disk limit is separate from the disk.** Docker on macOS runs a Linux VM with its own virtual disk and its own cap. The Mac having 230 GB free is irrelevant if that cap is 64 GB. Raised it to 150 GB before starting, which avoided running out of space partway through a multi-day sync.
+
+**A stray quote in a filename.** A quote character crept into the `nano` command, so the file was created as `docker-compose.yml'` rather than `docker-compose.yml`. Compose reported "no configuration file provided", which is accurate but says nothing about why. Found it by reading `ls -la` properly instead of skimming it.
+
+**Read-only mount colliding with the image's startup script.** I mounted `bitcoin.conf` read-only into the container's data directory. The official image's entrypoint runs `chown` across that directory on startup, the chown failed on a read-only file, and the container exited. With `restart: unless-stopped` set, it did that in a loop several hundred times. Fixed by mounting the config to `/config` instead and pointing bitcoind at it with `-conf=/config/bitcoin.conf`, so the startup script never touches it.
+
+**Bitcoin Core refuses to guess between two config files.** The failed run had left a copy of `bitcoin.conf` inside the data volume. Once the correct config was at `/config`, the node saw two and refused to start rather than silently pick one. Removed the stray file with a throwaway Alpine container mounted against the volume, since the node's own container would not stay up long enough to do it from inside.
+
+That refusal is worth noting rather than treating as an obstacle. Silently ignoring a config file is how someone ends up running a node they believe is pruned and is not. A system handling money should decline ambiguity rather than resolve it out of sight, which is the same principle behind treating clustering results as probabilistic in `docs/06-detection.md`.
+
+**bitcoin-cli needed telling where its credentials were.** The node had the config, the CLI did not, so it looked in the default path and found nothing. Adding the same `-conf` flag fixed it. Aliased as `btc` to avoid retyping.
+
+None of these were exotic. Every one was named precisely in the container logs, which is where I should have looked first rather than second.
