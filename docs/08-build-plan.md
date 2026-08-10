@@ -1,152 +1,135 @@
 # 08. Build plan
 
-Seven phases. Each has a definition of done. Do not start a phase until the previous one is genuinely finished, because the failure mode on a project like this is four things half-built and nothing demonstrable.
+Seven phases, each with a definition of done. No phase begins before the previous one meets it. The failure mode this guards against is several components half-built and nothing demonstrable.
 
-Estimates assume focused days. Adjust to your actual availability.
-
----
-
-## Phase 0: Sync the node
-
-**Start this tonight, before anything else.** It runs unattended for days and everything is blocked behind it.
-
-- Install Docker and Docker Compose
-- Write `docker-compose.yml` with just the `bitcoind` service
-- Configure per doc 03
-- Start it and leave it
-
-Done when: `getblockchaininfo` shows `initialblockdownload: false` and the height matches a public explorer.
-
-Time: 1 hour of work, then 1 to 4 days of waiting.
-
-While it syncs, do phases 1 and 2. They need no node.
+Time estimates assume focused days.
 
 ---
 
-## Phase 1: Finish the planning docs
+## Phase 0: Node sync
 
-Michael was emphatic: markdown before code. These docs are a starting point, not a finished artefact.
+Everything is blocked behind this, and it runs unattended for days, so it starts first.
 
-- Read all of them properly and disagree with things
-- Where you disagree, change them and record why
-- Fill the gaps only you can fill: what typologies from your dissertation transfer to crypto, and which do not
+- Docker and Docker Compose installed
+- `docker-compose.yml` with the `bitcoind` service only
+- Configuration per `03-bitcoin-node.md`
 
-That last point is the highest-value work in the whole project and nobody else can do it. Your dissertation was on AI adoption in APP fraud prevention. APP fraud is social engineering into an authorised push payment. Crypto theft is frequently the same social engineering with an irreversible rail. The comparison between the two, written up properly, is a genuinely original angle.
+**Done when:** `getblockchaininfo` reports `initialblockdownload: false` and the height matches a public explorer.
 
-Done when: you can explain the whole architecture to someone non-technical in five minutes without notes.
+**Time:** about an hour of work, then one to four days of syncing.
 
-Time: 1 to 2 days.
+Phases 1 and 2 require no node and run in parallel.
 
 ---
 
-## Phase 2: Design system and wireframes
+## Phase 1: Documentation
 
-Runs in parallel with the sync, on a separate screen, as Michael described.
+Architecture written down before any implementation code exists.
 
-- Design system in regular Claude, per doc 07
-- Load it into Claude Design
-- Wireframe all six screens
+The substantive work here is the typology mapping: establishing which money laundering patterns from traditional payments transfer to a UTXO ledger and which do not. Layering maps almost directly. Structuring depends on a reporting threshold with no Bitcoin equivalent. That distinction shapes which detection rules in `06-detection.md` are worth building and which are included only to make the comparison explicit.
+
+**Done when:** the full architecture can be explained to a non-technical reader in five minutes without reference to the documents.
+
+**Time:** 1 to 2 days.
+
+---
+
+## Phase 2: Design system and screens
+
+Runs in parallel with the sync.
+
+- Design system per `07-ui-spec.md`
+- Wireframes for all six screens
 - High-fidelity mockups
-- Export the zip into the repo
+- Exported assets into the repository
 
-Done when: you have mockups you would be happy to show someone.
+**Done when:** mockups exist for every screen and are internally consistent.
 
-Time: 1 to 2 days.
+**Time:** 1 to 2 days.
 
 ---
 
 ## Phase 3: Ingestion
 
-Node is synced. Now the real work.
+The hardest phase.
 
-- ClickHouse in the compose file, schema from doc 05 applied
-- Ingestor service: ZMQ subscriber, transaction decoder, input resolution per doc 04
-- Batched inserts, 1,000 rows or 2 seconds
-- A metrics endpoint from the start: transactions per second, resolution rate, lag
+- ClickHouse added to the compose file, schema from `05-data-models.md` applied
+- Ingestor service: ZeroMQ subscriber, transaction decoder, input resolution per `04-ingestion.md`
+- Batched inserts, flushing at 1,000 rows or 2 seconds
+- Metrics from the outset: transactions per second, resolution rate, lag
 
-Verify by hand before moving on. Pick a transaction your ingestor stored, look it up on a public block explorer, and check that every input address, output address and amount matches. Do this for at least five transactions including a multi-input one and a SegWit one.
+Verification is manual before proceeding. At least five transactions stored by the ingestor are checked against a public block explorer, confirming every input address, output address and amount. The sample includes a multi-input transaction and a SegWit transaction.
 
-Done when: it has run 24 hours without intervention, input resolution rate is above 95%, and hand-verification passes.
+**Done when:** 24 hours of unattended operation, input resolution above 95%, and hand-verification passes.
 
-Time: 3 to 5 days. This is the hardest phase. Expect the address decoding to take longer than you think.
+**Time:** 3 to 5 days. Address decoding consistently takes longer than expected.
 
 ---
 
 ## Phase 4: Detection
 
 - Watchlist matcher
-- Rules 1, 3, 4 and 6 from doc 06. These four work immediately with no accumulated history
+- Rules 1, 3, 4 and 6 from `06-detection.md`. These four function immediately with no accumulated history
 - Alerts table and write path
-- Manual review of 100 real alerts, per doc 06. Record the false positive rate
+- Manual review of 100 real alerts to establish a measured false positive rate
 
-Defer rules 2, 5, 7 and 8. Peel chain needs Neo4j, velocity needs 30 days of history, structuring is low value early, and labelling needs external data.
+Rules 2, 5, 7 and 8 are deferred. Peel chain detection requires the graph. Velocity anomaly requires 30 days of per-address history. Structuring is low value early. Proximity to labelled addresses requires external data.
 
-Done when: alerts fire on real live traffic and you have a measured false positive rate written down.
+**Done when:** alerts fire against live traffic and a measured false positive rate is recorded.
 
-Time: 2 to 3 days.
+**Time:** 2 to 3 days.
 
 ---
 
 ## Phase 5: Graph
 
-- Neo4j in the compose file, constraints from doc 05 applied first
+- Neo4j added to the compose file, constraints from `05-data-models.md` applied before any data load
 - Subgraph materialisation on watch creation
-- Live graph writes, on a separate thread, never blocking the ingestor
+- Live graph writes on a separate thread, never blocking the ingestor
 - Rule 2, peel chain detection
 - Trace and shortest-path queries
 
-Done when: you can add a watch on a real active address and see a correct graph appear within a minute.
+**Done when:** a watch on a live active address produces a correct graph within a minute.
 
-Time: 2 to 3 days.
+**Time:** 2 to 3 days.
 
 ---
 
-## Phase 6: API and UI
+## Phase 6: API and interface
 
-- FastAPI over both databases
+- FastAPI over both stores
 - React frontend built from the Phase 2 mockups
-- D3 trace graph. Budget properly for this, it is the hardest frontend piece
-- Email alerting. Use a transactional provider, do not run a mail server
+- Force-directed trace graph. The hardest frontend component; budgeted accordingly
+- Email alerting through a transactional provider
 
-Done when: end to end. Someone pastes an address, funds move, an email arrives, the link opens a graph showing the movement.
+**Done when:** end to end. An address is submitted, funds move, an email arrives, and the link opens a graph showing the movement.
 
-Time: 4 to 6 days.
+**Time:** 4 to 6 days.
 
 ---
 
-## Phase 7: Make it visible
+## Phase 7: Documentation and write-up
 
-Michael's point about documenting the journey. This is not optional polish, it is the part that converts the work into interviews.
+- README with screenshots
+- Technical write-up of the design decisions. The pruning constraint forcing mempool-first ingestion, described in `04-ingestion.md`, is the most substantive of these: a real constraint, a non-obvious solution, and a consequence that turned out to be architecturally correct
+- Short demonstration recording
 
-- Clean up the README with real screenshots
-- Write up the technical decisions. The pruning constraint driving mempool-first ingestion, from doc 04, is the best story in the project. It has a real problem, a non-obvious solution, and a consequence that turned out to be architecturally correct
-- Two-minute screen recording. Michael was specific about the length. Not thirty minutes
-- Publish it. Then reach out to blockchain analytics and crypto security firms with it
-
-Time: 1 to 2 days.
+**Time:** 1 to 2 days.
 
 ---
 
 ## Total
 
-Roughly 15 to 25 working days, on top of node sync time.
+Roughly 15 to 25 working days beyond node sync time.
 
-## Cutting scope
+## Scope reduction
 
-If time gets short, cut in this order:
+If time requires cutting, the order is:
 
-1. Rules 2, 5, 7, 8 from doc 06
-2. Screen 3, and hardcode watch configuration
-3. Neo4j entirely, and do traces as recursive ClickHouse queries
+1. Rules 2, 5, 7 and 8 from `06-detection.md`
+2. Screen 3, with watch configuration hardcoded
+3. Neo4j, with traces implemented as recursive ClickHouse queries
 
-Cutting Neo4j is the big one. It is also survivable, because a documented decision that says "I designed for both, built ClickHouse first, and here is exactly how Neo4j slots in and why" demonstrates more judgement than a half-working graph layer. Do not cut ingestion quality or the false positive measurement. Those are the credibility.
+The third is significant but survivable. A documented decision explaining the two-store design, why ClickHouse was built first, and exactly how the graph layer slots in demonstrates more than a half-working graph implementation would.
 
-## Model selection
-
-Michael's advice on this was sound and matches how the tools are priced. Roughly:
-
-- Architecture, design decisions, debugging something genuinely stuck: the larger model, moderate effort
-- Writing and iterating code from a clear spec: a smaller and faster model, higher effort setting
-- His pattern of one session coordinating and a second session executing works well. Get the coordinator to write the prompt, paste it into the worker session, paste the output back
-
-His specific note was not to reach for the largest model by default. For this workload that is right, most of the work is well-specified code generation rather than hard reasoning.
+Ingestion quality and the false positive measurement are not cut. Those are what the rest of the system's credibility rests on.

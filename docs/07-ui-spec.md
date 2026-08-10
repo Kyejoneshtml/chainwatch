@@ -1,102 +1,94 @@
-# 07. UI specification
+# 07. Interface specification
 
-This is the brief you take into Claude Design. Michael's order was: design system first, then wireframes, then high-fidelity mockups. Follow it. The design system is the thing that makes the later outputs coherent rather than five screens that look like five different products.
+The interface is designed before it is built, and the design system is settled before any screen is drawn. Without that order the result is several screens that each look like a different product.
 
-## Step 1: design system
+## Design system
 
-Do this in regular Claude, not Claude Design. Produce a design system spec, then paste it into Claude Design's design system field.
+The system must specify:
 
-Michael's suggestion was to find a site whose look you like and use it as reference. Sensible. Some directions that suit this product:
+- **Colour.** Background layers, text hierarchy, and a semantic set for alert severity. Severity needs four distinguishable steps that survive being rendered as small indicators on a dense screen
+- **Type.** A monospace face for addresses, hashes and amounts, and a readable sans for everything else. This is not optional. A 64-character hex string set in a proportional font is unreadable
+- **Numerics.** Tabular figures, so amounts align in columns
+- **Spacing, radii, elevation.** A standard scale
+- **Component states**, particularly loading and empty. A real-time product spends a good deal of its time waiting for the next event, and those states are seen more often than in a conventional application
 
-- Terminal and monitoring aesthetics. Dark, dense, monospace for hashes and addresses. Suits a tool for professionals
-- Financial dashboard. Light, high information density, restrained colour used only for state
-- Michael floated ClickHouse yellow and black with Neo4j blue. Do not do this. Your product is not their product, and borrowing two vendors' palettes reads as derivative
+The aesthetic direction leans toward monitoring and terminal conventions: dark, dense, monospace-heavy, restrained use of colour reserved for state rather than decoration. The alternative direction is a light, high-density financial dashboard. Either works; mixing them does not.
 
-What the design system must specify:
+Borrowing the brand palettes of the underlying vendors is explicitly avoided. The product is not their product.
 
-- Colour: background layers, text hierarchy, and a semantic set for alert severity. Severity needs four distinguishable steps that survive being small dots on a dense screen
-- Type: a monospace face for addresses, hashes and amounts, and a readable sans for everything else. Non-negotiable. A 64-character hex string in a proportional font is unreadable
-- Numeric alignment: tabular figures so amounts line up in columns
-- Spacing scale, radii, elevation
-- Component states, particularly loading and empty, since a real-time product spends a lot of time waiting for the next event
+## Screens
 
-## Step 2: screens
+Six screens. All are wireframed before any high-fidelity work begins.
 
-Six screens. Wireframe all six before doing any high-fidelity work.
+### 1. Landing
 
-### Screen 1: Landing
+Public. One job: convert a concerned user into an active watch.
 
-Public. One job: convert a worried person into a watch.
+- A single large input for a Bitcoin address
+- One line of explanation: paste a wallet address, get told the moment funds move
+- A live counter of transactions processed, driven from ClickHouse. It is the cheapest available demonstration that the pipeline is genuinely running
 
-- Single large input: paste a Bitcoin address
-- One line of explanation. "Paste a wallet address. We will tell you the moment funds move."
-- A live counter of transactions processed. Genuinely live, from ClickHouse. It is the cheapest possible proof the thing is real, and it is the first thing an interviewer will notice
-
-### Screen 2: Address overview
+### 2. Address overview
 
 The result of a lookup.
 
-- Address, in monospace, with a copy button
+- Address in monospace with a copy control
 - Current balance, total received, total sent, transaction count, first and last seen
-- Risk score with the contributing factors expanded, per doc 06. Never a bare number
-- A sparkline of activity over time
+- Risk score with contributing factors expanded, never a bare number
+- Activity sparkline over time
 - Transaction list, newest first, paginated
-- Prominent "Watch this address" call to action
+- Prominent call to action to watch the address
 
-### Screen 3: Watch configuration
+### 3. Watch configuration
 
-- Minimum value threshold, so a user watching an active wallet is not flooded
-- Trace depth, with a plain-language explanation of what depth means and why deeper is slower
-- Notification email
-- Which rules from doc 06 to enable
+- Minimum value threshold, so watching an active wallet does not flood the user
+- Trace depth, with a plain-language explanation of what depth means and why greater depth is slower
+- Notification address
+- Which detection rules to enable
 
-### Screen 4: Trace graph
+### 4. Trace graph
 
-The centrepiece. Michael suggested D3 and that is right for a custom force-directed layout.
+The centrepiece. A custom force-directed layout rather than an off-the-shelf chart component.
 
 - Nodes are addresses, edges are value flows
 - Node size by value handled, colour by risk score
-- The watched address visually anchored and distinct
-- Edge thickness by value, edge label showing amount and time
-- Time slider, so the user can scrub and watch the money move. This is the demo moment. Build this one properly
-- Click a node for a side panel with that address's detail
-- Click an edge to open the transaction
-- Visual distinction for low-confidence edges, particularly anything routed through a detected CoinJoin
+- The watched address anchored and visually distinct
+- Edge thickness by value, edge labels showing amount and time
+- A time slider, so the user can scrub and watch funds move through the network
+- Clicking a node opens a side panel with that address's detail
+- Clicking an edge opens the transaction
+- Low-confidence edges are visually distinguished, particularly anything routed through a detected CoinJoin
 
-Practical constraint: D3 force layouts degrade badly past a few hundred nodes. Cap the rendered set and provide expand-on-click rather than dumping the full subgraph. Decide this at design time, not when it is already slow.
+Force-directed layouts degrade badly past a few hundred nodes. The rendered set is capped, with expand-on-click rather than rendering the full subgraph at once. This is decided at design time, not after it becomes slow.
 
-### Screen 5: Alerts
+### 5. Alerts
 
 - Feed, newest first, severity-coloured
-- Filter by severity, rule, watched address
+- Filters by severity, rule, and watched address
 - Acknowledge and dismiss
-- Each alert links straight into the trace graph at the relevant moment
+- Each alert links directly into the trace graph at the relevant moment
 
-### Screen 6: System status
+### 6. System status
 
-Do not skip this one. It is what makes it look like infrastructure rather than a demo.
+Included deliberately. It is what distinguishes running infrastructure from a demonstration.
 
-- Node sync height versus network height
+- Node sync height against network height
 - Mempool size
-- Ingestion rate, transactions per second, live
-- Input resolution coverage, the unresolved rate from doc 04
+- Ingestion rate in transactions per second, live
+- Input resolution coverage, the unresolved rate described in `04-ingestion.md`
 - ClickHouse row counts, Neo4j node and edge counts
 - Disk usage per volume
 
-## Step 3: mockups
+## Mock data requirements
 
-Once wireframes are settled, generate high-fidelity mockups in Claude Design. Then export the zip and bring it into the repo as Michael described, so the frontend work starts from a real design rather than from scratch.
+Mock data misleads the design unless it matches the real shape of the data.
 
-## Data to mock
-
-Mock data will look wrong in ways that undermine the design if you are not careful. Get these right:
-
-- Bitcoin addresses are 26 to 62 characters. Use realistic-length strings and include all address types from doc 04, especially the long `bc1q` P2WSH ones, because they will break your column widths
-- Transaction IDs are 64 hex characters. Always. Design for that width
-- Amounts span an enormous range, from dust of a few hundred satoshis to hundreds of BTC. Test the layout at both extremes
-- Timestamps in a real-time product need relative formatting. "12 seconds ago" not a full datetime
-- Confirmation counts matter. Zero confirmations, meaning still in the mempool, needs its own visual treatment, since that state is central to the whole product
+- Bitcoin addresses run from 26 to 62 characters. All address types from `04-ingestion.md` must appear, especially the longer `bc1q` P2WSH forms, since those determine column widths
+- Transaction IDs are always 64 hex characters. Layouts are designed to that width
+- Amounts span an enormous range, from dust of a few hundred satoshis to hundreds of BTC. Layouts are tested at both extremes
+- Timestamps use relative formatting. "12 seconds ago", not a full datetime
+- Confirmation count needs its own visual treatment at zero, meaning still in the mempool, since that state is central to the product
 
 ## Accessibility
 
-Severity must not be encoded in colour alone. Add an icon or a text label. In a tool about financial harm this is not a nice-to-have, and it is a detail that will be noticed by anyone who has shipped a regulated product.
+Severity is never encoded in colour alone. Each level carries an icon or text label as well. In a tool concerned with financial harm this is a requirement rather than a refinement.
