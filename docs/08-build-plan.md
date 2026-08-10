@@ -69,11 +69,11 @@ Verification is manual before proceeding. At least five transactions stored by t
 ## Phase 4: Detection
 
 - Watchlist matcher
-- Rules 1, 3, 4 and 6 from `06-detection.md`. These four function immediately with no accumulated history
+- Tier 1 rules from `06-detection.md`: watchlist movement, wallet drain, fan-in consolidation, dormancy break
 - Alerts table and write path
 - Manual review of 100 real alerts to establish a measured false positive rate
 
-Rules 2, 5, 7 and 8 are deferred. Peel chain detection requires the graph. Velocity anomaly requires 30 days of per-address history. Structuring is low value early. Proximity to labelled addresses requires external data.
+Tier 2 and tier 3 rules are deferred. Behavioural profile shift and velocity anomaly require 30 days of accumulated history. Peel chain requires the graph layer. Fan-out and proximity to labelled addresses require an exchange address set that is not available.
 
 **Done when:** alerts fire against live traffic and a measured false positive rate is recorded.
 
