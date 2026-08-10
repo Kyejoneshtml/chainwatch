@@ -36,7 +36,7 @@ Bitcoin Core running pruned, publishing over ZeroMQ. A Python ingestor resolving
 
 ## Status
 
-Phase 0 complete: node synced and validating. Everything else is ahead. The commit history and doc revisions are part of the record, not just the finished build.
+Phase 0 in progress: node running and validating the chain. Everything else is ahead. The commit history and doc revisions are part of the record, not just the finished build.
 
 ## Build log
 
