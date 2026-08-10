@@ -2,46 +2,41 @@
 
 Real-time Bitcoin fraud analytics. Watch a wallet, get told the moment money moves, then follow it through the network.
 
-Built by Kye McFarlane-Jones, Edinburgh. Rename the project if you think of something better. "Chainwatch" is a placeholder.
+Built by Kye McFarlane-Jones, Edinburgh.
+
+## The problem
+
+Bitcoin is public but illegible. Every transaction that has ever happened is visible to anyone, yet when a wallet is drained the victim has no practical way to read it. There are no names, no account numbers, no balances, just hex strings pointing at other hex strings.
+
+Commercial tools solve this for institutions at institutional prices. Chainwatch is an attempt at the individual version: paste an address, get alerted the moment funds move, and see where they went.
 
 ## What this repository is right now
 
-Planning documents only. No code. That is deliberate.
+Planning documents. No implementation code yet, which is deliberate.
 
-The order of work is:
+The order of work is architecture first, written down until it is boring and obvious, then design system and mockups, then ingestion, then the interface. Skipping the first step produces a working Bitcoin node, a database full of hex strings, and no clear question to ask of it.
 
-1. Write the architecture down in markdown until it is boring and obvious
-2. Build a design system in Claude Design
-3. Wireframe, then high-fidelity mockups
-4. Only then write ingestion code
-5. Only then connect the UI to the backend
-
-Skipping step 1 is the standard failure mode. You end up with a working Bitcoin node, a database full of hex strings, and no idea what question you were trying to answer.
-
-## The one-sentence pitch
-
-Bitcoin is public but illegible. Chainwatch makes a specific wallet legible in real time: it tells you when funds move, where they went, and whether the movement pattern looks like laundering.
-
-## Reading order
+## Documents
 
 | File | What it covers |
 |---|---|
-| `docs/01-thesis.md` | Why this project, what the opinion is, what you say in an interview |
-| `docs/02-architecture.md` | The components and how data flows between them |
-| `docs/03-bitcoin-node.md` | Pruning, disk budget, bandwidth reality, node config |
-| `docs/04-ingestion.md` | The hard technical problem and how it is solved |
-| `docs/05-data-models.md` | ClickHouse schema, Neo4j schema, why both |
-| `docs/06-detection.md` | The actual fraud logic. This is the part that matters |
-| `docs/07-ui-spec.md` | The brief you take into Claude Design |
-| `docs/08-build-plan.md` | Phased plan with stop points |
+| `docs/01-thesis.md` | Why this project exists and the case for the approach |
+| `docs/02-architecture.md` | Components and how data flows between them |
+| `docs/03-bitcoin-node.md` | Pruning, disk budget, bandwidth, node configuration |
+| `docs/04-ingestion.md` | The central technical problem and how it is solved |
+| `docs/05-data-models.md` | ClickHouse schema, Neo4j schema, and why both |
+| `docs/06-detection.md` | Fraud typologies and the detection logic |
+| `docs/07-ui-spec.md` | Interface specification |
+| `docs/08-build-plan.md` | Phased build plan |
 | `docs/09-glossary.md` | Every term used here, defined |
-| `CLAUDE.md` | Context file for Claude Code sessions |
+
+## Stack
+
+Bitcoin Core running pruned, publishing over ZeroMQ. A Python ingestor resolving transactions in real time. ClickHouse as the full archive, Neo4j for watched subgraphs. FastAPI and a React frontend with D3 for graph rendering. All of it in Docker Compose.
 
 ## Status
 
-Nothing built yet. Update this section as phases complete so the repo history tells the story. Michael's point about documenting the journey is right: the commit log and the doc revisions are the evidence, not just the finished thing.
-
-
+Phase 0 complete: node synced and validating. Everything else is ahead. The commit history and doc revisions are part of the record, not just the finished build.
 
 ## Build log
 
