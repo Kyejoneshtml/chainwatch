@@ -1,12 +1,12 @@
 # 04. Ingestion
 
-This is the hard part of the project. It is also the part that will make you sound credible, because it is a problem you only discover by building.
+The central technical problem in the system. Everything else is configuration and query writing.
 
 ## Bitcoin has no accounts
 
-If you have only worked with bank data this is the mental adjustment. There are no balances and no accounts. There are only **unspent transaction outputs**.
+There are no balances and no accounts. There are only **unspent transaction outputs**.
 
-A transaction consumes some existing outputs and creates new ones. A transaction looks like:
+A transaction consumes existing outputs and creates new ones:
 
 ```
 Inputs:                          Outputs:
@@ -14,37 +14,47 @@ Inputs:                          Outputs:
   (txid_B, vout 0)  ---------->    0.6 BTC to address bc1q...abc
 ```
 
-Outputs are easy. Each output states its value and its locking script, and you derive an address from that script. It is all right there.
+Outputs are straightforward. Each states its value and its locking script, and an address derives from that script.
 
-**Inputs are the problem.** An input is a pointer: transaction ID plus output index. It does not contain an address or an amount. To know who is sending, you must go and look up the output being spent.
+**Inputs are the problem.** An input is a pointer: transaction ID plus output index. It carries no address and no amount. Determining the sender requires looking up the output being spent.
 
-This is why "follow the money" is genuinely harder on Bitcoin than it sounds, and it is worth being able to say that out loud.
+This is why tracing funds on Bitcoin is harder than it appears from the outside.
 
 ## Why this collides with pruning
 
-To resolve an input you need the previous transaction. On an archival node with `txindex=1` you would just call `getrawtransaction` on it. On a pruned node that transaction may have been deleted years ago and `txindex` is not available.
-
-At first glance this looks fatal. It is not, and the reason is the single best technical detail in this build.
+Resolving an input requires the previous transaction. An archival node with `txindex=1` answers this with `getrawtransaction`. A pruned node may have deleted that transaction years ago, and `txindex` is incompatible with pruning.
 
 ## The resolution
 
-**The pruned node keeps the complete UTXO set.**
+**A pruned node retains the complete UTXO set.**
 
-An input to an unconfirmed transaction is, by definition, currently unspent. That is what makes the transaction valid. So it is in the UTXO set. So `gettxout` returns it, including its value and its address, regardless of how old it is.
+An input to an unconfirmed transaction is, by definition, currently unspent. That is what makes the spending transaction valid. So the output sits in the UTXO set, and `gettxout` returns it with its value and address, regardless of when it was created.
 
 ```
-gettxout(txid, vout) -> { value, scriptPubKey: { address, type }, ... }
+gettxout(txid, vout, include_mempool) -> { value, scriptPubKey: { address, type }, ... }
 ```
 
-This works on a pruned node for any unspent output, including one created in 2013.
+This holds on a pruned node for any unspent output, including one created in 2013.
 
-## The catch, and it dictates the architecture
+### The third argument is not optional in practice
 
-The moment a transaction is **confirmed** in a block, its inputs are spent, and they leave the UTXO set. `gettxout` then returns null.
+`include_mempool` defaults to `true`. With it enabled, an output that a **pending** transaction is spending is treated as already spent and excluded from the result.
 
-So there is a window. You can resolve a transaction's inputs while it sits in the mempool. Once it is mined, you cannot.
+That is precisely the case the ingestor operates in. It processes transactions the moment they arrive in the mempool, so every input it resolves is by definition being spent by a pending transaction. Called with the default, `gettxout` returns null every time.
 
-This is not a bug to work around. It is a constraint that produces the right design.
+**The ingestor must pass `include_mempool=false`**, which queries the UTXO set as of the confirmed chain tip, where those outputs remain unspent.
+
+The failure mode matters more than the fix. `gettxout` with the default returns exit code 0, writes nothing to stderr, and produces an empty result. No exception, no error log, no crash. An ingestor built without this flag runs indefinitely, reports success, and resolves zero percent of inputs.
+
+Verified against a live node on 11 August 2026: input resolution returned a P2WSH address and a value of 7.32669980 BTC for an output that returned null under the default behaviour.
+
+## The window
+
+Once a transaction is confirmed, its inputs are spent and leave the UTXO set permanently. `gettxout` then returns null under any flag.
+
+So there is a window. A transaction's inputs are resolvable while it sits in the mempool. After it is mined, they are not.
+
+This is a constraint that produces the correct design rather than a problem to work around.
 
 ## Mempool-first ingestion
 
@@ -55,46 +65,44 @@ ZMQ rawtx fires (transaction enters mempool)
 Decode the raw transaction
     |
     v
-For each input: gettxout(prev_txid, prev_vout)
-    |            -> gives you sender address and amount
-    |            -> DO THIS NOW. The window is open.
+For each input: gettxout(prev_txid, prev_vout, include_mempool=false)
+    |            -> returns sender address and amount
+    |            -> the window is open now and closes on confirmation
     v
 Write row to ClickHouse with status = 'pending'
     |
     v
-Cache every output this transaction creates, in your own store
+Cache every output this transaction creates, locally
     |
     v
-... time passes, roughly 10 minutes on average ...
+... roughly 10 minutes on average ...
     |
     v
 ZMQ rawblock fires (transaction confirmed)
     |
     v
-Look the transaction up by txid in your own data. You already have it,
+Look the transaction up by txid in local data. Already present,
 fully resolved, from the mempool stage.
     |
     v
 Update status = 'confirmed', set block height and timestamp
 ```
 
-Notice this is exactly how a real-time monitoring product ought to work anyway. You want to know about a suspicious movement when it is broadcast, not ten minutes later when it is mined. The pruning constraint pushed you toward the correct architecture. That is a good story and it is true, which is better.
+This is how a real-time monitoring product should work regardless. A suspicious movement is worth knowing about when it is broadcast, not ten minutes later when it is mined. The pruning constraint forces the architecture that the product requires anyway.
 
 ## Handling the misses
 
-You will miss transactions. The ingestor will restart, a container will hiccup, and some transactions get mined without ever passing through your mempool view.
+Transactions will be missed. The ingestor restarts, a container fails, and some transactions are mined without ever passing through the local mempool view.
 
 Three fallbacks, in order:
 
-1. **Your own outputs table.** Every output you have ever ingested is stored with its address and value. Before calling the node, look locally. This is a cache hit most of the time once you have been running a while, and it costs nothing.
+1. **The local outputs table.** Every output ever ingested is stored with its address and value. Check locally before calling the node. Once the system has been running a while this is a cache hit most of the time and costs nothing.
 
-2. **`getblock` with verbosity 3.** For recent blocks, this returns prevout information including addresses, because the node retains undo data for blocks it still holds. On a pruned node this works for blocks inside the prune window, which is your last 20 GB, roughly the last two to three months. **Verify this on your node before relying on it.** Run `bitcoin-cli getblock <recent_hash> 3` and confirm the input objects contain a `prevout` field with an address. If they do not, this fallback is unavailable and you drop to option 3.
+2. **`getblock` with verbosity 3.** For recent blocks this returns prevout information including addresses, because the node retains undo data for blocks it still holds. On a pruned node this covers blocks inside the prune window, roughly the last two to three months at 20 GB. **Verify on the node before relying on it:** run `getblock <recent_hash> 3` and confirm the input objects contain a `prevout` field with an address.
 
-3. **Mark it unresolved.** Store the transaction with the input address as null and a flag. Do not silently drop it and do not guess. An analytics tool that quietly loses data is worse than one that admits a gap. Track the unresolved rate as a metric and put it on the dashboard, because knowing your own coverage is exactly the sort of thing that separates a real tool from a demo.
+3. **Mark it unresolved.** Store the transaction with a null input address and a flag. Never silently drop it and never guess. Track the unresolved rate as a metric and surface it in the interface. A tool that quietly loses data is worse than one that reports its own coverage.
 
-## Address types you will encounter
-
-Bitcoin has accumulated several address formats over the years. Your decoder must handle all of them or your data has holes.
+## Address types
 
 | Type | Prefix | Notes |
 |---|---|---|
@@ -103,35 +111,33 @@ Bitcoin has accumulated several address formats over the years. Your decoder mus
 | P2WPKH | `bc1q...` (42 chars) | SegWit v0 |
 | P2WSH | `bc1q...` (62 chars) | SegWit v0 script |
 | P2TR | `bc1p...` | Taproot |
-| P2PK | none | Very early outputs. Raw public key, no address. Derive one or mark as such |
+| P2PK | none | Very early outputs. Raw public key, no address |
 | OP_RETURN | none | Data carrier, unspendable, zero value |
 
-Do not write the decoders yourself. Use a library. `python-bitcoinlib` or `bitcoinlib` handle script parsing. Even better, note that `gettxout` and `getblock` verbosity 3 give you `scriptPubKey.address` already computed by Bitcoin Core, which is more reliable than anything you would write. Take the address the node gives you.
+Decoders are not written by hand. `gettxout` and `getblock` verbosity 3 both return `scriptPubKey.address` already computed by Bitcoin Core, which is more reliable than any reimplementation. Where script parsing is genuinely needed, `python-bitcoinlib` handles it.
 
-One thing that will bite you: some outputs are non-standard scripts with no address at all. Handle null. Do not assume every output has an address.
+Some outputs are non-standard scripts with no address at all. Null must be handled rather than assumed away.
 
 ## Multi-input transactions and the ownership heuristic
 
-When you see a transaction with several inputs, you have just learned something valuable. To sign a transaction spending multiple outputs, the sender must control the private keys for all of them. So all those input addresses are probably controlled by one entity.
+A transaction with several inputs carries information. Signing it requires control of the private keys for all of them, so those input addresses are probably controlled by one entity.
 
-This is the **common-input-ownership heuristic** and it is the foundation of every address clustering system in the industry.
+This is the **common-input-ownership heuristic**, the foundation of address clustering.
 
-It has exceptions. CoinJoin transactions are deliberately built so that many unrelated parties contribute inputs to one transaction, specifically to break this heuristic. If you apply it blindly to a CoinJoin you will merge dozens of unrelated users into one false cluster.
+It has a known failure mode. CoinJoin transactions are constructed so that many unrelated parties contribute inputs to one transaction, specifically to defeat it. Applied blindly to a CoinJoin, it merges dozens of unrelated users into one false cluster.
 
-Detecting CoinJoins is covered in doc 06. Build the cluster logic so that transactions flagged as CoinJoin are excluded from clustering. Getting this right is a genuinely good thing to be able to talk about, because it shows you understand that these are heuristics with failure modes rather than facts.
+Detection is covered in `06-detection.md`. Cluster logic excludes transactions flagged as CoinJoin.
 
 ## Performance
 
-Rough numbers so you can size things sensibly.
+- Bitcoin averages roughly 400,000 to 600,000 transactions a day, around 5 to 7 per second
+- Roughly 2 inputs per transaction on average, so 10 to 15 `gettxout` calls per second
+- `gettxout` against a local node over the Docker network is sub-millisecond
 
-- Bitcoin averages roughly 400,000 to 600,000 transactions a day, so around 5 to 7 per second
-- Each transaction has maybe 2 inputs on average, so 10 to 15 `gettxout` calls per second
-- `gettxout` on a local node over the Docker network is sub-millisecond
+Comfortably within a single Python process.
 
-This is comfortably within a single Python process. Do not over-engineer it.
+Two things that will cause trouble:
 
-Two things that will actually cause you trouble:
+**Batch the ClickHouse inserts.** Single-row inserts each create a data part and the merge process falls behind. Buffer in memory and flush at 1,000 rows or 2 seconds, whichever comes first.
 
-**Batch your ClickHouse inserts.** ClickHouse hates single-row inserts, each one creates a data part and the merge process falls behind. Buffer in memory and flush every 1,000 rows or every 2 seconds, whichever comes first. This is the single most common way people make ClickHouse look slow.
-
-**Never let the ingestor block on Neo4j.** Neo4j writes are much slower than ClickHouse writes. If the watchlist matcher fires and you write synchronously to Neo4j, a slow write stalls your mempool subscriber, you fall behind, and you start missing the input resolution window. Push Neo4j writes onto a separate queue and thread.
+**Never block the ingestor on Neo4j.** Graph writes are far slower than columnar writes. A synchronous Neo4j write stalls the mempool subscriber, the ingestor falls behind, and input resolution starts failing as transactions confirm before they are processed. Neo4j writes go to a separate queue and thread.

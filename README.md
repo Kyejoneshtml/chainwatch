@@ -36,7 +36,7 @@ Bitcoin Core running pruned, publishing over ZeroMQ. A Python ingestor resolving
 
 ## Status
 
-Node syncing. Planning documents complete. Design system and first screens built. Ingestion is next. The commit history and doc revisions are part of the record, not just the finished build.
+Node synced and verified at block 962,053. Planning documents complete. Design system and first screens built. Ingestion is next. The commit history and doc revisions are part of the record, not just the finished build.
 
 ## Build log
 
@@ -57,3 +57,17 @@ That refusal is worth noting rather than treating as an obstacle. Silently ignor
 **bitcoin-cli needed telling where its credentials were.** The node had the config, the CLI did not, so it looked in the default path and found nothing. Adding the same `-conf` flag fixed it. Aliased as `btc` to avoid retyping.
 
 None of these were exotic. Every one was named precisely in the container logs, which is where I should have looked first rather than second.
+
+### Phase 0 verification: input resolution (11 August 2026)
+
+Node synced at block 962,053. Pruned, out of initial block download, ZeroMQ publishing on all three sockets.
+
+The check that mattered was resolving a sender address on a pruned node. It failed forty times in a row before I understood why.
+
+`gettxout` takes an optional third argument, `include_mempool`, which defaults to true. With it enabled, an output that a pending transaction is spending counts as already spent and is excluded. That is exactly the case the ingestor operates in, since it processes transactions the moment they enter the mempool. Called with the default, it returns null every single time.
+
+What makes this worth recording is the failure mode rather than the fix. Exit code 0, nothing on stderr, empty result. An ingestor written without the flag would run indefinitely, report success throughout, and resolve zero percent of inputs. Nothing would alert anyone until someone queried the database and found it empty.
+
+Resolution confirmed against live data: a P2WSH output of 7.32669980 BTC, retrieved for an input that returned null under the default. `docs/04-ingestion.md` now specifies the flag and explains why.
+
+The general lesson transfers beyond this project. The dangerous failures in a monitoring system are the ones that return success.
