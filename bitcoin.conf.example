@@ -21,3 +21,4 @@ zmqpubrawtx=tcp://0.0.0.0:28332
 zmqpubrawblock=tcp://0.0.0.0:28333
 
 zmqpubhashblock=tcp://0.0.0.0:28334
+zmqpubsequence=tcp://0.0.0.0:28335

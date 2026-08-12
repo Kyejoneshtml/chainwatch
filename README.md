@@ -36,7 +36,7 @@ Bitcoin Core running pruned, publishing over ZeroMQ. A Python ingestor resolving
 
 ## Status
 
-Node synced and verified at block 962,053. Planning documents complete. Design system and first screens built. Ingestion is next. The commit history and doc revisions are part of the record, not just the finished build.
+Node synced and verified at block 962,053, publishing on four ZeroMQ topics. Fifteen planning and research documents complete, recording 46 design corrections identified before implementation. Design system built. Ingestion is next. The commit history and doc revisions are part of the record, not just the finished build.
 
 ## Build log
 
