@@ -1,103 +1,175 @@
 # 09. Glossary
 
-Every term used across these docs. No assumed knowledge.
+Every term used across these documents. No assumed knowledge.
 
 ## Bitcoin
 
-**UTXO** — Unspent Transaction Output. Bitcoin's unit of value. Not a balance, an unspent output waiting to be consumed. Your "balance" is the sum of the UTXOs you can unlock.
+**UTXO** — Unspent Transaction Output. Bitcoin's unit of value. Not a balance, an unspent output waiting to be consumed.
 
-**Outpoint** — A pointer to a specific output: transaction ID plus output index. What an input actually contains.
+**Outpoint** — A pointer to a specific output: transaction ID plus output index. What an input contains.
 
 **vin / vout** — Index of an input or output within a transaction. The first output is vout 0.
 
-**Satoshi** — Smallest unit. 100,000,000 satoshis to one BTC. Always store amounts in satoshis as integers.
+**Satoshi** — Smallest unit. 100,000,000 to one BTC. Amounts are always stored as integer satoshis.
 
-**Mempool** — The pool of valid transactions broadcast but not yet mined. Where you catch transactions live.
+**Mempool** — Valid transactions broadcast but not yet mined. Where transactions are caught live.
 
-**Confirmation** — Number of blocks mined on top of the block containing a transaction. Zero means still in the mempool.
+**Confirmation** — Blocks mined on top of the block containing a transaction. Zero means still in the mempool.
 
-**Coinbase transaction** — The first transaction in a block, creating new bitcoin for the miner. Has no real inputs. Handle it as a special case or your input resolution will fail on one transaction per block.
+**Coinbase transaction** — The first transaction in a block, creating new bitcoin for the miner. No real inputs; a special case in input resolution.
 
-**scriptPubKey** — The locking script on an output. Addresses are derived from it. Some scripts have no corresponding address.
+**scriptPubKey** — The locking script on an output. Addresses derive from it. Some scripts have no address.
 
-**Change output** — When you spend a UTXO larger than your payment, the remainder returns to you as a new output. Discussed at length in doc 06.
+**Change output** — When a UTXO larger than the payment is spent, the remainder returns to the sender as a new output.
 
-**CoinJoin** — A transaction combining inputs from many unrelated parties to break clustering heuristics. Deliberate privacy technique.
+**CoinJoin** — A transaction combining inputs from unrelated parties to defeat clustering. A deliberate privacy technique.
 
-**Peel chain** — Laundering pattern where a large sum repeatedly sheds small amounts while the bulk moves on. Doc 06, rule 2.
+**Peel chain** — Laundering pattern where a large sum repeatedly sheds small amounts while the bulk moves on.
 
-**Dust** — An output so small the fee to spend it exceeds its value.
+**Dust** — An output so small the fee to spend it approaches or exceeds its value. Bitcoin's dust limit is 546 satoshis for most output types.
+
+**Dusting attack** — Sending dust to many addresses so that when recipients spend it alongside their own funds, the multi-input heuristic falsely links their addresses.
+
+**Address poisoning** — Generating a vanity address resembling one a victim uses, then sending a near-zero transaction so the lookalike appears in their history, hoping they later copy the wrong one.
+
+**Reorganization (reorg)** — A mined block discarded and replaced when a competing chain becomes longer. Roughly one per day on mainnet.
+
+**Orphaned block** — A block no longer on the canonical chain after a reorg.
+
+**Chain split / fork** — When parts of the network follow different rules and diverge onto separate chains. One occurred on 8 August 2026 over BIP-110.
 
 **IBD** — Initial Block Download. First sync from genesis to tip.
 
-**Pruning** — Deleting validated block files after processing while keeping the UTXO set. Doc 03.
+**Pruning** — Deleting validated block files after processing while retaining the UTXO set.
 
 **Chainstate** — Bitcoin Core's database of the complete UTXO set. Not pruned. The reason this project works.
 
-**txindex** — Optional Bitcoin Core index allowing lookup of any transaction by ID. Incompatible with pruning.
+**txindex** — Optional index allowing lookup of any transaction by ID. Incompatible with pruning.
 
-**assumeutxo** — Feature allowing a node to load a UTXO snapshot and become usable before fully validating history.
+**include_mempool** — Third argument to `gettxout`, defaulting to true. When true, outputs being spent by pending transactions are excluded. Must be false for this system's input resolution.
 
-**SegWit** — Segregated Witness. 2017 upgrade that moved signature data. Produced the `bc1q` address format.
+**Regtest** — A private Bitcoin network mode where blocks are mined on command. Used for testing reorg handling deliberately.
+
+**SegWit** — Segregated Witness, 2017 upgrade. Produced the `bc1q` address format.
 
 **Taproot** — 2021 upgrade. Produced the `bc1p` address format.
 
-**ZeroMQ / ZMQ** — Messaging library. Bitcoin Core uses it to push notifications of new transactions and blocks. How you get live data without polling.
+**RBF** — Replace-By-Fee. Signalling that a transaction may be replaced by a higher-fee version. Part of the behavioural fingerprint in detection rule 5.
 
-**RPC** — Remote Procedure Call. Bitcoin Core's request-response interface. `gettxout`, `getblock` and so on.
+**OP_RETURN** — An output type carrying arbitrary data, unspendable. Bitcoin Core v30 removed the 80-byte cap.
+
+**ZeroMQ / ZMQ** — Messaging library Bitcoin Core uses to push notifications. **Not a reliable transport**; a notification mechanism rather than a data source.
+
+**sequence topic** — ZMQ topic publishing ordered mempool additions, removals, and block connections and disconnections. The reorg signal.
+
+**RPC** — Remote Procedure Call. Bitcoin Core's request-response interface. The authoritative source in this system.
+
+## Tracing
+
+**Taint** — The property of an output being traceable to a particular earlier source, typically a theft.
+
+**Poison method** — Any transaction with a tainted input produces entirely tainted outputs. Causes rapid diffusion; unusable.
+
+**Haircut method** — Taint distributed proportionally across outputs. Used by most commercial tools. Also diffuses badly: over 90% of active wallets tainted by 2017 in one study.
+
+**FIFO** — First in, first out. Inputs fund outputs in order. Lossless and backward-traceable. **The method used by this system.**
+
+**Clayton's Case (1816)** — English legal precedent establishing FIFO for tracing mixed funds through an account. Still in force across the UK and much of the Commonwealth.
+
+**LIFO / TIHO** — Last in first out; Taint In Highest Out. Alternative methods described in the literature.
 
 ## Databases
 
-**Columnar store** — Stores data by column rather than by row. Reading one column of a billion rows touches only that column's data. Excellent for aggregation, poor for fetching whole individual records. ClickHouse.
+**Columnar store** — Stores data by column. Excellent for aggregation across many rows, poor for fetching whole individual records. ClickHouse.
 
-**Graph database** — Stores nodes and relationships as first-class things with direct pointers between them. Traversing a relationship is a pointer follow rather than a join. Excellent for connection queries, poor for aggregation. Neo4j.
+**Graph database** — Stores nodes and relationships with direct pointers. Excellent for traversal, poor for aggregation. Neo4j.
 
-**MergeTree** — ClickHouse's main table engine family. Writes small sorted parts and merges them in the background.
+**MergeTree** — ClickHouse's main table engine family.
 
-**ReplacingMergeTree** — MergeTree variant that discards older duplicate rows on the sorting key during merges. Used for the pending-to-confirmed update.
+**ReplacingMergeTree** — Discards older duplicate rows on the sorting key **during background merges**, not on insert. Until a merge runs, both rows are visible.
 
-**AggregatingMergeTree** — MergeTree variant that combines rows with aggregate functions during merges. Used for `address_stats`.
+**FINAL** — ClickHouse query modifier forcing deduplication at read time. Expensive; disables `PREWHERE` optimisation by default.
 
-**Ordering key** — In ClickHouse, the physical sort order on disk. The most important schema decision. Queries filtering on the leading column read contiguous data.
+**Version column** — Explicitly declared column determining which duplicate wins. Without one, replacement follows merge order, which is unsafe.
 
-**Materialised view** — In ClickHouse, an insert trigger that writes derived rows into another table as data arrives. Different from a Postgres materialised view, which is a cached query result.
+**TOO_MANY_PARTS** — ClickHouse error caused by unbatched inserts creating too many data parts.
 
-**Cypher** — Neo4j's query language. Pattern-matching syntax: `(a)-[:SENT_TO]->(b)`.
+**AggregatingMergeTree** — Combines rows with aggregate functions during merges.
 
-**MERGE** — Cypher operation meaning create if absent, match if present. Requires a uniqueness constraint or it does a full scan.
+**Ordering key** — Physical sort order on disk. The most important ClickHouse schema decision.
 
-**Variable-length path** — Cypher's `*1..6` syntax, matching paths of one to six relationships. The core tracing capability.
+**Materialised view** — In ClickHouse, an insert trigger writing derived rows. Different from a Postgres materialised view.
 
-**Louvain** — Community detection algorithm. Finds densely connected clusters. Michael's "network rings".
+**Cypher** — Neo4j's query language. Pattern syntax: `(a)-[:SENT_TO]->(b)`.
 
-**GDS** — Graph Data Science, Neo4j's algorithm library. Check licensing for your version.
+**MERGE** — Cypher operation meaning create if absent, match if present. Locks both endpoints; requires a uniqueness constraint or it does a full scan.
+
+**Variable-length path** — Cypher's `*1..6` syntax. The core tracing capability. Always bounded.
+
+**Supernode** — A node with very high relationship count, typically 100,000 or more. Exchange hot wallets and mining pools. Traversal *through* one is expensive; terminating *at* one is not.
+
+**Louvain** — Community detection algorithm. Degrades badly on graphs containing supernodes.
+
+## Engineering
+
+**Idempotency** — The property that repeating an operation produces the same result. Achieved here through the txid as natural key.
+
+**Natural key** — A key derived from the data itself rather than generated. The txid. Without one, every retry creates a new row.
+
+**At-least-once delivery** — Guarantees nothing is lost but permits duplicates. Sufficient when paired with idempotent writes.
+
+**Checkpoint** — Durable record of processing position, allowing restart to resume rather than restart.
+
+**Dead letter store** — Where repeatedly failing items go for inspection, rather than infinite retry or silent loss.
+
+**Kill-and-restart test** — Killing a process at random points and verifying correctness after recovery. Exercises checkpoint recovery, replay and partial batch handling at once.
+
+**Shadow rule** — A detection rule running silently against live traffic, recording what it would have alerted on, so its false positive rate can be measured before it is enabled.
+
+**Suppression logic** — Excluding known recurring benign patterns from alerting. Absent suppression is a named cause of high false positive rates.
+
+**Peer group benchmarking** — Comparing an entity against similar entities rather than only against its own history.
 
 ## Infrastructure
 
-**Docker** — Runs each service in an isolated container with its own dependencies. Means Bitcoin Core, ClickHouse and Neo4j do not fight over system libraries.
+**Docker** — Runs each service in an isolated container with its own dependencies.
 
-**Docker Compose** — Defines multiple containers in one YAML file. `docker compose up` starts everything. Michael's portability point: copy the directory, run one command elsewhere.
+**Docker Compose** — Defines multiple containers in one file. `docker compose up` starts everything.
 
-**Volume** — Persistent storage surviving container restarts. Without one, your synced blockchain vanishes when the container is recreated.
+**Volume** — Persistent storage surviving container restarts.
 
-**Bind mount** — Maps a host directory into a container. Use for the bitcoind data so you can see and manage the disk usage directly.
+**Bind mount** — Maps a host directory into a container. Used for bitcoind data so disk usage is visible.
 
-**Container network** — The private network containers use to reach each other by service name. Why `rpcallowip` needs the Docker subnet range.
-
-## Financial crime
+## Financial crime and law
 
 **AML** — Anti-Money Laundering.
 
-**KYC** — Know Your Customer. Identity verification. Largely absent from Bitcoin at the protocol level, which is the entire problem.
+**KYC** — Know Your Customer. Largely absent from Bitcoin at the protocol level.
 
-**APP fraud** — Authorised Push Payment fraud. Victim is deceived into sending the payment themselves. Your dissertation topic. Structurally very close to most crypto theft.
+**APP fraud** — Authorised Push Payment fraud. The victim is deceived into sending the payment themselves.
 
-**Typology** — A recognised pattern of criminal behaviour. Peel chains, fan-out, structuring.
+**Typology** — A recognised pattern of criminal behaviour.
 
-**Structuring** — Breaking a large transfer into smaller ones to stay under reporting thresholds. Translates imperfectly to Bitcoin, since there is no equivalent threshold.
+**Structuring** — Breaking a transfer into amounts below a reporting threshold. Does not transfer to Bitcoin, which has no such threshold.
 
-**Layering** — The stage of laundering where funds are moved repeatedly to obscure origin. What peel chains and fan-out are for.
+**Layering** — Moving funds repeatedly to obscure origin. Transfers directly.
 
-**False positive** — An alert that turns out to be legitimate activity. The dominant operational cost in any real transaction monitoring system, and the number that separates a tested detection system from an untested one.
+**False positive** — An alert that turns out to be legitimate activity. The dominant operational cost. Industry rates reach 95%.
 
-**Attribution** — Linking an address to a real identity. Not in scope. Clustering groups addresses by probable common control, which is a statistically different and much weaker claim.
+**Attribution** — Linking an address to a real identity. Explicitly out of scope.
+
+**Clustering** — Grouping addresses by probable common control. A statistical claim, not an identification. Published error rate 63.46% for multi-input.
+
+**PoCA 2002** — Proceeds of Crime Act 2002. The UK statute under which crypto assets are frozen.
+
+**Crypto Wallet Freezing Order** — Court order under PoCA requiring an exchange to freeze a deposit address. Obtained by law enforcement, not by victim request.
+
+**Action Fraud** — The UK's national reporting centre for fraud and cybercrime.
+
+**Daubert standard** — US admissibility test for expert evidence, requiring among other things a known error rate. No address clustering algorithm currently meets it.
+
+**Secondary victimisation** — Blame directed at a victim by family, friends, professionals or the wider community. A major cause of underreporting.
+
+**DPIA** — Data Protection Impact Assessment. Likely required before public deployment.
+
+**Trauma-informed design** — Design practice for interfaces used by people in distress. The governing UI principle here: relief, not delight.

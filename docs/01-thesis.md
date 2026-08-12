@@ -2,58 +2,103 @@
 
 ## The problem
 
-If a bank account is compromised, there is an institution to call, a chargeback mechanism, and a regulated firm with a duty to reimburse. If a Bitcoin wallet is drained, there is nothing. The transaction is final, the ledger is public, and the victim has no practical way to read it.
+If a bank account is compromised, there is an institution to call, a chargeback mechanism, and a regulated firm with a duty to reimburse. If a Bitcoin wallet is drained, there is none of that. The transaction is final, the ledger is public, and the victim has no practical way to read it.
 
-That last part is the gap. The data is fully public. The illegibility is a tooling problem, not an information problem.
+The data is entirely public. The illegibility is a tooling problem.
 
-Chainalysis, Elliptic and TRM Labs solve this for institutions at institutional prices. The individual victim is not served, and neither is anyone who wants to see how the analysis was reached rather than take it on trust.
+## What already exists, and what does not
+
+An earlier version of this document claimed nobody serves the individual victim. That was wrong and is corrected here.
+
+Free Bitcoin address monitoring with email alerts is available from several established providers, including Blockonomics, Bitcoinwhoswho, WalletWhitePages and Cryptocurrency Alerting. The last is a mature commercial product with a REST API, webhooks and multi-chain coverage. **Basic alerting is a commodity.**
+
+What none of them provide:
+
+- Tracing where funds went after they moved, rather than only notifying that they moved
+- Laundering pattern detection
+- Explained risk assessment with stated error rates
+- Any output oriented toward what the victim should do next
+
+At the other end, Chainalysis, Elliptic and TRM Labs serve institutions at institutional prices, and their methods are closed.
+
+## What actually recovers stolen funds in the UK
+
+This determines the product, so it is stated precisely.
+
+Funds are frozen by **Crypto Wallet Freezing Orders** under the Proceeds of Crime Act 2002, obtained by law enforcement, requiring exchanges to freeze deposit addresses identified as receiving misappropriated assets. A victim may then apply for release of the funds.
+
+The constraint is not detection speed. Practitioner guidance is blunt that law enforcement cannot investigate every referral, "such is the scale of this problem." The recommended response is that a victim conducts their own tracing, then packages the investigation and provides it to police to support an application for a freezing order.
+
+Compounding this: only **2% to 15% of fraud victims report at all**. The barriers are psychological rather than practical — shame, self-blame, secondary victimisation by family and community, and a belief that authorities will not act. Some victims feel they do not deserve to recover their money.
 
 ## The product
 
-A watchlist and alerting service for Bitcoin addresses.
+**A tool that produces evidence a victim can act on.**
 
-1. A user enters a wallet address they care about, typically one that has just been drained
-2. The moment funds move from that address, an alert fires. Seconds, not the next day
-3. The alert links to a graph showing where the money went and what happened next
-4. As funds hop, the trace extends automatically to a configured depth
+1. A watched address is monitored continuously
+2. Movement produces an alert within seconds
+3. Funds are traced through subsequent hops using a defined methodology
+4. The output is a report formatted for submission to police
 
-The closest existing analogy is Have I Been Pwned, but for wallet movement rather than credential leaks.
+The report is the product. The alerting is how the evidence is gathered.
 
-## Why real time rather than batch
+This addresses the real constraint. A person arriving at Action Fraud with a completed trace is not narrating their own mistake; they are presenting documented evidence of a crime. That is a materially different encounter, and it may be what makes reporting possible at all.
 
-This is the design decision that carries the project.
+## Tracing methodology
 
-Laundering happens on a clock. Funds stolen from a hot wallet are typically split, hopped and moved toward an exchange or a mixer within minutes to hours. A batch pipeline that runs nightly reports where the money was, which is a historical record. A streaming pipeline reports where the money is, which is actionable, because exchanges can freeze deposits if they are notified fast enough.
+The system uses **FIFO** — first in, first out — to determine which outputs carry stolen funds when they mix with clean funds.
 
-The gap between those two is the value of the product. Batch processing is an archive. Streaming is an intervention.
+This is not a technical preference. It is the rule English law already applies to mixed funds, established in **Clayton's Case (1816)** and still in force across the UK and much of the Commonwealth. For a product whose output is intended for UK police, using the tracing rule English law itself uses is the strongest available position.
 
-## The technical position
+It is also technically superior. FIFO is lossless, so provenance can be traced backwards as well as forwards. The alternatives fail badly: Cambridge researchers applying poison and haircut methods to real 2014 thefts found that by 2017 more than 90% of active wallets were tainted, which makes the result meaningless.
 
-The system uses both a columnar store and a graph database. The reasoning matters more than the choice.
+Most commercial tools use haircut, which suits risk scoring. This system produces evidence, which is a different job.
 
-**ClickHouse answers questions about volume.** It is a columnar store. It scans hundreds of millions of rows and aggregates them quickly. Questions like "which addresses received the most value in the last hour", "what is the transaction velocity of this address against its 30 day baseline", "show every output between 0.99 and 1.01 BTC today" are aggregation questions. They are cheap in a columnar store and expensive in a graph.
+Full treatment, including the transaction fee problem and honest criticisms, in `14-tracing-adversarial.md`.
 
-**Neo4j answers questions about connection.** Questions like "find every path from this address to a known exchange deposit address within six hops", "which addresses form a tightly connected cluster", "did these two apparently unrelated wallets ever share a common ancestor" are traversal questions. They are natural in Cypher and painful in SQL, because each hop is another join and the query plan degrades badly past three or four.
+## Why real time
 
-**The interesting part is the split between them.** ClickHouse determines what is worth looking at. Neo4j explains why. An alert originates from an aggregate signal computed over the full stream in ClickHouse, and when an analyst opens that alert they land in a graph view served from Neo4j showing the specific subgraph.
+Laundering runs on a clock. Stolen funds are typically split, hopped and moved toward an exchange within minutes to hours. A nightly batch produces a historical record; a live stream produces something actionable while the trail is still warm.
 
-The consequence is a deliberate asymmetry: **the whole blockchain does not go into Neo4j.** Roughly 500,000 transactions a day produces well over a million address-to-address edges a day. Neo4j can hold that, but it is the wrong use of it. Only the subgraph around watched addresses is materialised, expanded to a configured hop depth. ClickHouse holds everything; Neo4j holds the working set.
+## Technical position
 
-The trade-off is real. Arbitrary historical graph queries against addresses nobody has ever watched are not possible without a backfill step. The mitigation is that any subgraph can be reconstructed from ClickHouse on demand, since ClickHouse holds the full edge list. Storage is cheap in the columnar store and expensive in the graph, so the archive lives in the cheap one and the working set in the expensive one.
+The system uses a columnar store for aggregate analysis and a graph database for traversal.
+
+**ClickHouse** answers questions about volume: totals, rates, distributions, baselines. **Neo4j** answers questions about connection: paths, clusters, common ancestors. ClickHouse determines what merits attention; the graph explains why.
+
+The graph holds only materialised subgraphs around watched addresses, capped by node count and hop depth. ClickHouse holds everything.
+
+**This choice is provisional.** The BlockSci paper from Princeton argues that an in-memory analytical database is "orders of magnitudes faster than using general-purpose graph databases" for blockchain analysis. That criticism targets whole-chain workloads rather than bounded subgraph traversal, but the difference will be measured rather than assumed. See `13-engineering-practice.md`.
 
 ## Scope
 
-Deliberately excluded:
+Excluded deliberately:
 
-- No custody. This system never holds funds and has no wallet functionality
-- No attribution. Addresses are not linked to real identities. Clustering groups addresses by probable common control, which is a statistically weaker and different claim
-- Bitcoin only, initially. Ethereum's account model is a fundamentally different data problem and would double the ingestion work
-- No commercial-grade address labelling. Chainalysis and equivalents hold years of proprietary labelled address data that is not publicly available. This is the largest functional gap against a commercial tool and is stated plainly rather than worked around
+- **No custody.** The system never holds funds
+- **No attribution.** No identity claims, no public database of address labels, no payment for identifying information. Clustering groups addresses by probable common control, which is a weaker and different claim
+- **Bitcoin only initially.** Ethereum's account model is a different data problem
+- **No commercial-grade labelling.** Years of proprietary labelled address data are not obtainable. This is the largest functional gap and is stated rather than obscured
+
+The attribution exclusion has three justifications. It is epistemically honest. It is legally safer, since the ICO's position is that wallet addresses may constitute personal data and pseudonymous data remains in scope of UK GDPR. And it avoids a documented reputational failure: Arkham Intelligence's paid deanonymisation marketplace drew criticism that incorrect labelling "could lead to false accusations of money laundering."
+
+## Obligations to the accused
+
+A system that produces evidence about a person has obligations toward that person, including when it is wrong.
+
+The forensic standards literature identifies two interests: that tools produce court-admissible evidence or reasonable suspicion, and that outcomes "comply with general legal standards and in particular preserve the fair trial rights of the accused."
+
+Practically this means every inference carries a stated confidence level, heuristics are never presented as facts, published error rates are cited, and reports record what they were derived from and when.
+
+## Regulatory position
+
+Provisionally, no FCA registration is required. The Money Laundering Regulations registration regime covers exchange, custody and similar activities under Regulation 14A; analytics and tracing are not listed. This is not legal advice and requires confirmation before commercial operation.
+
+The Financial Services and Markets Act 2000 (Cryptoassets) Regulations 2026 were made on 4 February 2026, with the new regime expected in force on 25 October 2027. Scope should be rechecked before then.
 
 ## Open questions
 
-Recorded here to be answered as the build progresses:
-
-- Which money laundering typologies from traditional payments transfer cleanly to a UTXO ledger, and which do not? Structuring, for instance, depends on a reporting threshold that has no Bitcoin equivalent, while layering maps almost directly
-- What false positive rate do the detection rules produce against unlabelled live traffic, and which rules are usable without an exchange address whitelist?
-- At what hop depth does subgraph expansion stop being informative and start being noise?
+1. Which money laundering typologies transfer from traditional payments to a UTXO ledger, and which do not? Layering maps directly; structuring does not, because there is no reporting threshold to structure below
+2. What false positive rate do the detection rules produce against unlabelled live traffic?
+3. At what hop depth does subgraph expansion stop being informative?
+4. **Who is the primary user — the victim, or the person recovering funds on their behalf?** This determines the shape of the interface and is unresolved
+5. Would Action Fraud or a UK police force accept a report generated by an automated tool, and in what format?

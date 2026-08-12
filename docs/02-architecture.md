@@ -8,95 +8,111 @@ Bitcoin P2P network
         v
 [ bitcoind ]  pruned full node
         |
-        |  ZeroMQ publishes: rawtx (unconfirmed), rawblock (confirmed)
-        |  JSON-RPC answers: gettxout, getblock, getblockchaininfo
+        |  ZeroMQ: rawtx, rawblock, sequence  -- NOTIFICATION ONLY
+        |  JSON-RPC: gettxout, getblock, getrawtransaction  -- SOURCE OF TRUTH
         v
 [ ingestor ]  Python service
-        |     - decodes raw transactions
-        |     - resolves input addresses (see doc 04, this is the hard part)
-        |     - normalises into flat rows
+        |     - ZMQ notification triggers RPC fetch
+        |     - decodes transactions
+        |     - resolves input addresses (see doc 04)
+        |     - detects reorgs via stored block hash
+        |     - periodic mempool reconciliation
+        |
+        +--> [ checkpoint store ]  last processed block hash, last reconciliation
+        +--> [ dead letter store ]  repeatedly failing transactions
         |
         +-----------------------------> [ ClickHouse ]  everything, forever
         |                                     |
-        |                                     |  aggregate queries
         v                                     v
 [ watchlist matcher ]                   [ detection jobs ]
-        |                                     |
-        |  address is watched?                |  signal fired?
+        |                                     |  shadow mode first
         v                                     v
-[ Neo4j ]  subgraph only            [ alerts table in ClickHouse ]
+[ Neo4j ]  watched subgraphs only      [ alerts table ]
         |                                     |
         +------------------+------------------+
                            |
                            v
                      [ API layer ]  FastAPI
                            |
-                           v
-                     [ web UI ]  React, D3 for the graph
+                     +-----+-----+
+                     v           v
+              [ victim view ]  [ report generator ]
 ```
 
 ## Components
 
 ### bitcoind
 
-Bitcoin Core in pruned mode. Validates the full chain, keeps only recent blocks on disk, maintains the complete UTXO set. Publishes new transactions and blocks over ZeroMQ.
-
-Covered in detail in doc 03.
+Bitcoin Core, pruned, with four ZeroMQ topics published. Detail in `03-bitcoin-node.md`.
 
 ### ingestor
 
-A Python service. Subscribes to the node's ZeroMQ sockets, decodes each raw transaction, resolves the addresses on both sides, and writes rows.
+The only genuinely difficult component. Detail in `04-ingestion.md`.
 
-This is the only genuinely difficult component and doc 04 is entirely about it. Everything else is configuration and query writing.
+Three properties govern its design:
+
+**It never silently fails.** Every failure is recorded and counted. This follows from Lopp's observation that a single missed UTXO update can cascade until the index is unusable.
+
+**It never blocks.** ClickHouse writes are batched, Neo4j writes are queued to a separate thread. If the mempool subscriber falls behind, input resolution starts failing as transactions confirm before they are processed.
+
+**It is restartable.** A checkpoint records the last processed block hash and the last mempool reconciliation timestamp, so a restart resumes rather than restarting.
 
 ### ClickHouse
 
-The archive. Every transaction, every input, every output, from the moment you switch the ingestor on. Append only. This is where all aggregate analysis happens.
+The archive. Every transaction, input and output from ingestion start. Append-only, with a version column for status transitions. All aggregate analysis happens here.
 
-Note that you are building history forward from day one, not backfilling. On a pruned node you cannot recover the past. Accept this. Two weeks of live data is enough to demonstrate everything, and "we index forward from ingestion start" is a perfectly respectable architectural statement.
+History is built forward, not backfilled. On a pruned node the past cannot be recovered, and full historical indexing is not feasible on this hardware regardless — electrs indexes require 250GB to 1.3TB. "We index forward from ingestion start" is the architectural position.
 
 ### watchlist matcher
 
-Cheap in-memory check. Every transaction the ingestor sees, is either side of it an address currently on a watchlist, or within N hops of one? If yes, the transaction also goes to Neo4j and may trigger an alert.
-
-Keep the watchlist in Redis or just a Python set refreshed every few seconds. Do not query a database per transaction.
+An in-memory check on every transaction: is either side within N hops of a watched address? Kept as a Python set refreshed on a short interval. No database query per transaction.
 
 ### Neo4j
 
-The working set. Addresses and the value flows between them, but only for subgraphs that someone is actually watching.
+Materialised subgraphs around watched addresses only. Provisional, pending the benchmark described in `13-engineering-practice.md`.
 
 ### detection jobs
 
-Scheduled queries against ClickHouse that look for the patterns in doc 06. Run them on a short interval, one to five minutes. They write into an alerts table.
+Scheduled queries against ClickHouse, running on a short interval, writing to an alerts table.
 
-Deliberately separate from the ingestor. The ingestor must never block, because if it falls behind the mempool it starts missing the input resolution window described in doc 04.
+**Every rule runs in shadow mode first**, recording what it would have alerted on without producing user-facing alerts, until its false positive rate is measured. See `06-detection.md`.
+
+Deliberately separate from the ingestor, which must never block on analysis.
+
+### checkpoint store
+
+Last processed block hash, last mempool reconciliation timestamp, last successful ClickHouse flush. Small, durable, read on startup.
+
+### dead letter store
+
+Transactions that fail processing repeatedly. Not retried indefinitely, not dropped. Inspected manually.
 
 ### API layer
 
-FastAPI. Thin. Queries ClickHouse for numbers and time series, queries Neo4j for graphs, serves both to the UI as JSON.
+FastAPI. Queries ClickHouse for aggregates, Neo4j for graphs, serves both as JSON.
 
-### web UI
+### victim view and report generator
 
-React. D3 for the network graph, as Michael suggested. Everything else is standard components.
+Two distinct outputs. The victim view answers one question at a time in plain language. The report generator produces the police-ready document with full evidence and provenance.
 
-Built design-first in Claude Design, exported, then wired up. See doc 07.
+This split follows from `15-user-and-regulation.md`: the same data serves a distressed person and an investigator, and those are different readers.
 
 ## Everything runs in Docker Compose
 
-Per Michael's advice. One `docker-compose.yml`, five services, `docker compose up` and it works. Portable to a bigger machine by copying the directory.
+One file, services: `bitcoind`, `clickhouse`, `neo4j`, `ingestor`, `api`. Named volumes for persistence, except the bitcoind data directory which uses an explicit bind mount so disk usage is visible.
 
-Services: `bitcoind`, `clickhouse`, `neo4j`, `ingestor`, `api`. Add `redis` if the watchlist grows past what a Python set handles comfortably.
-
-Named volumes for the persistent data. One important exception: put the bitcoind data directory on a bind mount to a path you choose explicitly, so you can see the disk usage with `du` and move it to an external drive without wrestling Docker.
+A separate compose file provides the **regtest harness** — a private Bitcoin network for testing reorg handling deliberately. Detail in `08-build-plan.md`.
 
 ## Deliberate simplifications
 
-Written down so you can answer "why didn't you use X" honestly rather than looking like you did not know about X.
+Written down so the reasoning survives.
 
-**No message queue between ingestor and databases.** A production system would put Kafka or Redis Streams in the middle so that a database restart does not lose transactions. For a single-machine portfolio build it is a component to operate for little benefit. If asked, the answer is that you would add Redis Streams as the first change under real load, and you know exactly where it would go.
+**No message queue.** A production system would put Kafka or Redis Streams between ingestor and databases so a database restart loses nothing. The streaming literature is clear that this is often unnecessary: "a well-monitored at-least-once pipeline with idempotent sinks is often sufficient." Idempotency comes from the txid as natural key. Redis Streams would be the first addition under real load.
 
-**Single ingestor process.** No horizontal scaling. Bitcoin produces a few hundred thousand transactions a day, which is roughly five per second average. Python handles that comfortably. Say so with the number, because the number is what shows you thought about it.
+**Single ingestor process.** Bitcoin produces roughly 5 to 7 transactions per second. Python handles that comfortably.
 
-**No historical backfill.** Discussed above. Forward-only from ingestion start.
+**No historical backfill.** Discussed above.
 
-**No address labelling data.** You have no exchange deposit address list. You can partially work around this with clustering heuristics and by hand-labelling a few well-known addresses from public sources. Be explicit that this is the biggest functional gap versus a commercial tool.
+**No address labelling data.** The largest functional gap. OFAC sanctioned addresses are ingestible and cover a small fraction.
+
+**At-least-once, not exactly-once.** Duplicates are prevented by the natural key rather than by delivery guarantees. A continuous duplicate-detection query runs in production; if it ever returns rows, the idempotency contract is broken.
