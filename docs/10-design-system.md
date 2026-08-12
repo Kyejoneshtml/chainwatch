@@ -158,6 +158,10 @@ A copy control sits adjacent to every truncated identifier.
 
 Similar means sharing four or more leading and four or more trailing characters. The differing portion is rendered at weight 600 with `border-heavy` beneath.
 
+**Addresses render in full when diffing, not truncated.** Middle-truncation preserves both ends for visual verification, which is the right default. But where two addresses are shown specifically because they resemble one another, truncation conceals the characters the comparison exists to expose. Different situations, different rules.
+
+Diffing engages only when the pair genuinely shares 4+ leading and 4+ trailing characters. Otherwise the address renders plainly, so emphasis remains a poisoning signal rather than routine decoration.
+
 This directly counters address poisoning, in which an attacker's lookalike differs only in the middle.
 
 ### Monetary amounts
