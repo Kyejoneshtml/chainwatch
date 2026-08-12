@@ -64,6 +64,10 @@ The drop from warm to neutral between High and Medium is deliberate. Only the to
 
 **Severity is never encoded in colour alone.** Each level carries a text label and a distinct indicator shape.
 
+**There is no icon system.** Severity indicators are CSS-drawn shapes rather than glyphs. Strip colour entirely and all four levels remain distinguishable by shape and word alone. This is a decision, not an omission: if an icon set is added later it must not become the thing that carries severity meaning.
+
+**Fonts are self-hosted.** Inter and JetBrains Mono are served as local `.woff2` files rather than from a CDN. Loading fonts from Google's CDN transmits every visitor's IP address to Google on page load, which a German court found breached GDPR in 2022. Given this product's users and the data protection position in `15-user-and-regulation.md`, third-party font loading is not acceptable. Both families are SIL OFL licensed.
+
 ### Prohibited
 
 No gradients, no drop shadows beyond a single 1px hairline for overlays, no glow, no blur, no decorative effects. Flat surfaces separated by borders.
