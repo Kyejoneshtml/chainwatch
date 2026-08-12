@@ -174,6 +174,8 @@ Mono, tabular, right-aligned in tables.
 
 BTC to 8 decimal places with trailing zeros retained so decimal positions align. Satoshi values as integers with thin-space separators.
 
+**Exception: plain-language sentences.** Where an amount appears inside a Statement or a supporting sentence rather than in a column, it renders at natural precision in sans — "0.42 BTC", not "0.42100000 BTC". Tabular figures and fixed decimal places exist to align a column; in a single sentence there is no column, so the padding is noise to a reader in distress. The exact figure remains available in the transaction table, which uses `MonetaryAmount` properly.
+
 Zero and dust amounts in `text-muted`, so significant values stand out.
 
 **Dust inputs** carry a marker and a do-not-spend note. This is a safety feature, not decoration.
