@@ -1,0 +1,31 @@
+services:
+  btc1:
+    image: bitcoin/bitcoin:31.1
+    container_name: btc1
+    volumes:
+      - btc1-data:/home/bitcoin/.bitcoin
+      - ./regtest/bitcoin-regtest.conf:/config/bitcoin.conf:ro
+    command: -conf=/config/bitcoin.conf
+    ports:
+      - "18443:18443"
+    networks:
+      - regtest
+
+  btc2:
+    image: bitcoin/bitcoin:31.1
+    container_name: btc2
+    volumes:
+      - btc2-data:/home/bitcoin/.bitcoin
+      - ./regtest/bitcoin-regtest.conf:/config/bitcoin.conf:ro
+    command: -conf=/config/bitcoin.conf
+    ports:
+      - "18453:18443"
+    networks:
+      - regtest
+
+volumes:
+  btc1-data:
+  btc2-data:
+
+networks:
+  regtest:
