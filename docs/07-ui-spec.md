@@ -51,7 +51,11 @@ Plain language before any identifier. The transaction ID exists on the page but 
 - One sentence: "The funds were split across 3 addresses. From there they moved twice more."
 - A simple linear representation. Three boxes and two arrows. Money left here, arrived there, moved again
 - Each step: amount, time, and a plain-language note where one is available ("this address appears to belong to an exchange")
-- Confidence stated where it matters: "2 of these 3 addresses are unidentified"
+- Confidence stated where it matters, using the ConfidenceIndicator component: "This address appears to belong to an exchange (78%)". Neutral secondary, never a severity colour — an inference is not an alert
+
+**Unresolved hops are entries, not gaps.** Where funds could not be followed, that is its own timeline entry explaining why — typically that the receiving service does not publish records. Marked with a filled circle, because it happened, but set in `text-secondary` so it reads as a known dead end rather than a live lead. A gap in a trace is information; concealing it would imply the tool failed rather than that the data does not exist.
+
+**The final entry answers what comes next.** "The trail currently ends here" answers what is happening now. It is followed by what happens next: "If these funds move again, this page updates and you will be told." This is what allows someone to close the tab. A person who knows they will be told does not need to keep checking, which is the direct counter to the obsessive-checking finding in `15-user-and-regulation.md`.
 
 **No network graph.** A distressed person shown fifty nodes and edges learns nothing and feels worse.
 
