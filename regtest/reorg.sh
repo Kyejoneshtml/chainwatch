@@ -4,6 +4,9 @@ COMPOSE="docker compose -f $HOME/chainwatch/docker-compose.regtest.yml"
 b1() { $COMPOSE exec -T btc1 bitcoin-cli -conf=/config/bitcoin.conf "$@"; }
 b2() { $COMPOSE exec -T btc2 bitcoin-cli -conf=/config/bitcoin.conf "$@"; }
 
+b1 loadwallet "test" > /dev/null 2>&1 || b1 createwallet "test" > /dev/null 2>&1 || true
+b2 loadwallet "test2" > /dev/null 2>&1 || b2 createwallet "test2" > /dev/null 2>&1 || true
+
 A1=$(b1 getnewaddress)
 A2=$(b2 getnewaddress)
 
