@@ -262,6 +262,74 @@ Each address carries a composite risk score, 0 to 100, weighted from rules that 
 
 ---
 
+## Confidence derivation
+
+A confidence figure that is not computed from something is worse than no figure at all, because it carries the appearance of rigour without the substance. This section specifies how a confidence value is produced. Until it is implemented, no confidence figure may appear in a report.
+
+This gap was identified during report design: a summary page asserted 78% confidence that a trail terminated at an exchange, while the methodology page disclosed a 92.66% error rate for one of the heuristics the inference depended on. Those two numbers were in tension and neither was derived from the other.
+
+### The rule
+
+**Every confidence figure is computed from the error rates of the heuristics that produced the inference, and from nothing else.** No figure is entered by hand, estimated, or chosen because it looks plausible.
+
+### Base rates
+
+Each heuristic contributes a base confidence equal to one minus its published error rate.
+
+| Heuristic | Published error rate | Base confidence |
+|---|---|---|
+| Common-input-ownership | 63.46% | 36.54% |
+| One-time change | 92.66% | 7.34% |
+| Deposit-address clustering | none published | see below |
+
+These are low, and that is the honest position. Presenting a single-heuristic inference as 78% confident is not supportable by anything in the literature.
+
+### Combination
+
+The published analysis finds that the lowest error is achieved by applying both clustering heuristics together rather than either alone. Where an inference is supported by multiple independent heuristics, confidence rises, but the combination is stated rather than assumed.
+
+Two constraints on any combination method:
+
+1. **It never exceeds the confidence of the strongest supporting signal by more than the literature supports.** Combining two weak heuristics does not produce a strong conclusion.
+2. **The heuristics must be genuinely independent for the combination to hold.** Common-input-ownership and change identification are not fully independent, since both depend on assumptions about wallet software behaviour. Where dependence exists, the combined figure is capped rather than multiplied out.
+
+The specific method is deferred to implementation and must be recorded in `docs/tuning-log.md` when chosen, along with the reasoning.
+
+### Certain signals
+
+Some determinations are not heuristic and carry 100% confidence:
+
+- **Self-send.** An output paying an address already in the sender's cluster by a certain route is definitively change
+- **Direct observation.** The transaction occurred; the amounts are as recorded; the block hash is as stated. These are facts read from the chain, not inferences
+
+The report distinguishes these from inferences explicitly. A timeline of movements is fact. An attribution of an address to an exchange is inference.
+
+### Heuristics without a published error rate
+
+**Deposit-address clustering has no published error rate available.** It is currently relied upon for exchange attribution, which is the most consequential inference in a report — page 1 asserts the trail terminates at an identifiable service, and a freezing order application depends on that being right.
+
+Two positions are possible and one must be chosen before release:
+
+**Either** locate a published error rate and cite it, restoring the heuristic to the methodology table.
+
+**Or** state on the face of the report that exchange attribution rests on a heuristic for which no published error rate exists, and present it without a confidence figure rather than with an invented one.
+
+The second is acceptable and honest. What is not acceptable is the current state, in which the inference appears on page 3 with a number attached while page 4 no longer names the heuristic that produced it.
+
+**This is a release blocker for the report.**
+
+### Presentation
+
+Confidence is displayed as a short phrase with the figure, never a bare percentage: "This address appears to belong to an exchange (37%)" rather than "78%".
+
+Where a figure is low, it is shown anyway. A low confidence honestly stated is more useful to an investigator than a high one that cannot be defended, and it is the entire basis of the position in `01-thesis.md` that this system reports its own error rates where commercial tools do not.
+
+### Consequence
+
+Applying this properly will produce lower confidence figures than the mockups currently display. That is the correct outcome. The literature does not support high confidence in single-heuristic address attribution, and a report claiming otherwise would fail exactly the test this project sets for the incumbents.
+
+---
+
 ## Monitoring the rules themselves
 
 > "Sudden increases in alert volumes may indicate thresholds are too sensitive, while consistently low alert volumes can point to blind spots. Persistently high false-positive rates or very low conversion to Suspicious Activity Reports are strong signals that rule logic requires attention."
