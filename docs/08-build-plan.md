@@ -46,7 +46,9 @@ Reorg handling that cannot be tested cannot be trusted. Waiting for a mainnet re
 
 **Done when:** a reorg can be triggered on command and observed.
 
-**Time:** half a day to a day.
+**COMPLETE, 13 August 2026.** Two nodes on a private network. `regtest/reorg.sh` splits them, mines competing chains, reconnects, and asserts `confirmations: -1` on the orphaned tip. Runs in roughly fifteen seconds and passes from any starting height.
+
+One thing the manual run exposed that the documentation would not have: `setnetworkactive true` restores networking but does **not** restore the peer connection. `addnode ... onetry` is required. Without it the reorg silently does not happen and both nodes sit on different chains looking healthy.
 
 ### 3b. ClickHouse and schema
 
