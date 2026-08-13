@@ -63,10 +63,14 @@ Plain language before any identifier. The transaction ID exists on the page but 
 
 The screen that matters most and was absent from earlier versions.
 
-- **Generate report.** The primary action, and the primary output of the entire system
+- **Generate report.** The primary action, and the primary output of the entire system. The only interactive element on the screen, so nothing competes with it by construction. Prominence comes from scale rather than a new variant: the standard primary button at 52px height and 32px padding, not a restyle
 - Plain explanation of what the report is for: police reporting, and specifically Action Fraud
-- What happens next, in three or four sentences
+- A short list of what the report contains, ending with confidence levels stated for every inference. That last item is what makes the honesty structural rather than tonal
 - A prominent safety warning, below
+
+**The low recovery rate is named directly.** Silence on this screen would itself be a claim. Someone told that a report "gives them something to act on" will infer recovery unless told otherwise, and this is the screen where a person decides whether to act. The copy separates two things that are easily conflated: a trace makes the report investigable, which is worth doing, and that is not the same as getting funds back.
+
+This matters more here than anywhere else in the product. `15-user-and-regulation.md` found that victims already believe authorities will not take them seriously. A tool that implies otherwise and proves wrong compounds the original loss rather than relieving it.
 
 #### Anti-recovery-scam warning
 
