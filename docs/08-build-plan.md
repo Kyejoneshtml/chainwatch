@@ -50,6 +50,12 @@ Reorg handling that cannot be tested cannot be trusted. Waiting for a mainnet re
 
 One thing the manual run exposed that the documentation would not have: `setnetworkactive true` restores networking but does **not** restore the peer connection. `addnode ... onetry` is required. Without it the reorg silently does not happen and both nodes sit on different chains looking healthy.
 
+**Incomplete.** `reorg.sh` mines orphaned blocks with `generatetoaddress`, so the orphaned blocks contain only coinbase transactions. The test proves the node reorgs; it proves nothing about how transactions in an orphaned block are handled, which is what the ingestor actually needs.
+
+Of Lopp's five failure modes in `11-prior-art.md`, only reorganizations are covered. Double spends, spending of unconfirmed outputs, chaining of unconfirmed outputs, and transactions that never confirm are all untested.
+
+Extending the harness to cover these is a prerequisite for 3c.
+
 ### 3b. ClickHouse and schema
 
 Schema from `05-data-models.md`, including the version column, `block_hash`, the checkpoint table, and the three-way resolution state.
