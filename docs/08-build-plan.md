@@ -50,11 +50,13 @@ Reorg handling that cannot be tested cannot be trusted. Waiting for a mainnet re
 
 One thing the manual run exposed that the documentation would not have: `setnetworkactive true` restores networking but does **not** restore the peer connection. `addnode ... onetry` is required. Without it the reorg silently does not happen and both nodes sit on different chains looking healthy.
 
-**Incomplete.** `reorg.sh` mines orphaned blocks with `generatetoaddress`, so the orphaned blocks contain only coinbase transactions. The test proves the node reorgs; it proves nothing about how transactions in an orphaned block are handled, which is what the ingestor actually needs.
+**Extended and complete, 16 August 2026.** `regtest/scenarios.sh` covers four cases beyond the bare reorg: a real transaction confirmed then returned to the mempool by orphaning its block; a transaction spending an unconfirmed parent, proving the parent-pending case is distinguishable from a genuine resolution gap; an RBF replacement leaving the mempool and never confirming; and a low-fee transaction persisting unconfirmed across mined blocks. All four pass.
 
-Of Lopp's five failure modes in `11-prior-art.md`, only reorganizations are covered. Double spends, spending of unconfirmed outputs, chaining of unconfirmed outputs, and transactions that never confirm are all untested.
+The original gap, now closed: `reorg.sh` mines orphaned blocks with `generatetoaddress`, so the orphaned blocks contain only coinbase transactions. The test proves the node reorgs; it proves nothing about how transactions in an orphaned block are handled, which is what the ingestor actually needs.
 
-Extending the harness to cover these is a prerequisite for 3c.
+Of Lopp's five failure modes in `11-prior-art.md`, four are now covered: reorganizations, spending of unconfirmed outputs, chaining of unconfirmed outputs, and transactions that never confirm. Double spends remain untested, and are partially covered in practice by the RBF scenario since a fee-bumped replacement is the mechanism by which most apparent double spends occur.
+
+**One finding worth recording.** Bitcoin Core reports a replaced transaction's `confirmations` as the negative of the conflicting transaction's depth once the replacement confirms — `-2` when the replacement has 2 confirmations — rather than `0`. The assertion checks `confirmations <= 0` for this reason. The first version of the test asserted `= 0` and failed against correct behaviour.
 
 ### 3b. ClickHouse and schema
 
