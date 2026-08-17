@@ -46,6 +46,7 @@ alias btc2='docker compose -f ~/chainwatch/docker-compose.regtest.yml exec btc2 
 |---|---|
 | `regtest/up.sh` | Start both nodes, create wallets, mine to a spendable state, connect them |
 | `regtest/reorg.sh` | Split the network, mine competing chains, reconnect, report the result |
+| `regtest/scenarios.sh` | Exercise transaction handling: reorged transactions, chained unconfirmed spends, RBF, stale transactions |
 | `regtest/reset.sh` | Destroy both chains and start from genesis |
 
 ## The reorg procedure
@@ -83,3 +84,16 @@ Elapsed time from split to confirmed reorg: under two minutes.
 ## Repeating
 
 The nodes are left disconnected after a reorg run, so the exercise can be repeated without resetting. `reset.sh` destroys both chains and returns to genesis if a clean state is needed.
+
+## Scenarios
+
+`reorg.sh` proves the node reorganizes. It says nothing about transaction handling, since `generatetoaddress` mines blocks containing only coinbase transactions. `scenarios.sh` covers that gap: four scenarios, each independently runnable (`./regtest/scenarios.sh <name>`, or no argument to run all four), each printing PASS or FAIL and exiting non-zero on failure.
+
+| Scenario | What it proves |
+|---|---|
+| `reorg-with-transactions` | A confirmed transaction returns to the mempool with 0 confirmations when its block is orphaned |
+| `chained-unconfirmed` | A transaction spending an unconfirmed parent's output is the "parent pending" case in `04-ingestion.md`, distinguishable from a genuine resolution gap by the parent's own mempool membership |
+| `rbf-replacement` | A replaced transaction leaves the mempool and never confirms |
+| `stale-transaction` | A low-fee transaction can remain unconfirmed across several mined blocks |
+
+**RBF confirmations go negative, not to zero.** Once the replacement transaction confirms, Bitcoin Core's wallet reports the original's `confirmations` as the negative of the conflicting transaction's depth (e.g. `-2` once the replacement has 2 confirmations), not `0`. The `rbf-replacement` assertion checks `confirmations <= 0` for this reason. Verified against a live node on 16 August 2026.
