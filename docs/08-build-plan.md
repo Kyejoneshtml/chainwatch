@@ -60,6 +60,12 @@ Of Lopp's five failure modes in `11-prior-art.md`, four are now covered: reorgan
 
 ### 3b. ClickHouse and schema
 
+**COMPLETE, 17 August 2026.** Six tables plus the `address_stats` materialised view, applied automatically on first container start. ClickHouse 25.8 LTS, bound to the Docker network only and confirmed unreachable from the host on both 8123 and 9000.
+
+**One finding worth recording.** The `CLICKHOUSE_DB` environment variable creates the named database but does **not** set it as the default for schema initialisation. The entrypoint runs each `.sql` file through `clickhouse-client` with no `--database` flag, so unqualified `CREATE TABLE` statements land in `default` rather than the intended database. Every statement reports success. `USE chainwatch;` at the top of each schema file is required.
+
+This is the same failure shape as the `include_mempool` default in `04-ingestion.md`: a plausible assumption, no error, and a silently wrong result. It was caught by starting the container and running `SHOW TABLES` rather than by reading the entrypoint script and assuming.
+
 Schema from `05-data-models.md`, including the version column, `block_hash`, the checkpoint table, and the three-way resolution state.
 
 ### 3c. Ingestor
