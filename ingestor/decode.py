@@ -37,6 +37,7 @@ def resolve_input(rpc, vin):
             "state": "resolved",
             "value": value,
             "address": utxo["scriptPubKey"].get("address"),
+            "script_type": utxo["scriptPubKey"].get("type"),
             "is_dust": value <= DUST_LIMIT_SATS,
         }
 
@@ -48,10 +49,12 @@ def resolve_input(rpc, vin):
     # RPCError (or non-RPC exception) is a real failure and propagates.
     try:
         rpc.getmempoolentry(prev_txid)
-        return {"state": "parent_pending", "value": None, "address": None, "is_dust": False}
+        return {"state": "parent_pending", "value": None, "address": None,
+                "script_type": None, "is_dust": False}
     except RPCError as exc:
         if exc.code == -5:
-            return {"state": "unresolved", "value": None, "address": None, "is_dust": False}
+            return {"state": "unresolved", "value": None, "address": None,
+                    "script_type": None, "is_dust": False}
         raise
 
 

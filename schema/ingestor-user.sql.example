@@ -1,0 +1,25 @@
+-- Creates the ClickHouse user the ingestor authenticates as.
+--
+-- Not part of the applied schema (schema/*.sql, run by
+-- docker-entrypoint-initdb.d on first container start). CREATE USER is live
+-- instance state, stored under /var/lib/clickhouse/access/ inside the
+-- clickhouse-data volume -- it survives a plain container restart or
+-- recreate (docker compose up -d clickhouse), but is lost if that volume is
+-- ever removed or recreated (docker compose down -v, docker volume rm).
+-- If that happens, re-run this file (with a real password substituted) and
+-- update ingestor/.env to match.
+--
+-- Why a dedicated user at all: the 'default' user is restricted to true
+-- localhost by /etc/clickhouse-server/users.d/default-user.xml and cannot
+-- be used through the published host port at all, by design -- see
+-- ingestor/README.md for the diagnosis. 'ingestor' is scoped instead of
+-- widening that restriction: SELECT and INSERT on chainwatch only, no
+-- CREATE, no DROP, no ALTER. It writes rows and reads checkpoints; nothing
+-- else. Stage 5's reorg rollback will need ALTER on transactions/flows --
+-- add that grant then, not now.
+
+CREATE USER IF NOT EXISTS ingestor
+IDENTIFIED WITH plaintext_password BY 'CHANGEME'
+HOST IP '172.16.0.0/12';
+
+GRANT SELECT, INSERT ON chainwatch.* TO ingestor;

@@ -3,7 +3,9 @@ from dataclasses import dataclass, field
 
 import config
 import decode
+import persist
 import zmq_listener
+from ch_client import CHClient
 from rpc import RPCClient
 
 LABELS = {
@@ -24,6 +26,11 @@ class Stats:
     resolved: int = 0
     parent_pending: int = 0
     unresolved: int = 0
+    rows_written_transactions: int = 0
+    rows_written_flows: int = 0
+    batches_flushed: int = 0
+    insert_failures: int = 0
+    duplicate_count: int = 0
 
     def summary(self):
         # coverage_rate is what docs/08-build-plan.md's 95% target measures:
@@ -42,6 +49,11 @@ class Stats:
             "unresolved": self.unresolved,
             "coverage_rate": coverage_rate,
             "pending_rate": pending_rate,
+            "rows_written_transactions": self.rows_written_transactions,
+            "rows_written_flows": self.rows_written_flows,
+            "batches_flushed": self.batches_flushed,
+            "insert_failures": self.insert_failures,
+            "duplicate_count": self.duplicate_count,
         }
 
 
@@ -61,13 +73,14 @@ def fee_display(summary):
     return summary["fee"]
 
 
-def process_and_log(rpc, txid, source, stats):
+def process_and_log(rpc, txid, source, stats, persistence):
     tx = rpc.getrawtransaction(txid, verbose=True)
     summary = decode.process_transaction(rpc, tx)
 
     stats.resolved += summary["resolved"]
     stats.parent_pending += summary["parent_pending"]
     stats.unresolved += summary["unresolved"]
+    persistence.add(summary, tx["vsize"])
 
     print(
         f"[tx] source={source} txid={summary['txid']} "
@@ -79,15 +92,24 @@ def process_and_log(rpc, txid, source, stats):
 
 def main():
     rpc = RPCClient()
+    ch = CHClient()
 
     info = rpc.getblockchaininfo()
     print(f"[main] RPC connected: chain={info['chain']} blocks={info['blocks']}")
 
+    checkpoint = persist.read_checkpoint(ch)
+    if checkpoint:
+        print(f"[main] resuming: last checkpoint {checkpoint}")
+    else:
+        print("[main] no checkpoint found, starting fresh")
+
     stats = Stats()
+    persistence = persist.Persistence(ch, stats)
+
     try:
         for topic, payload in zmq_listener.listen():
             if topic == "rawtx":
-                continue  # arrival already logged by zmq_listener; no reliable
+                pass  # arrival already logged by zmq_listener; no reliable
                 # txid can be derived from this payload without decoding it
                 # (hashing it yields the wtxid for SegWit transactions, not
                 # the txid getrawtransaction needs) -- sequence's 'A' event
@@ -99,16 +121,25 @@ def main():
                 if label == "A":
                     txid = txid_from_sequence(payload)
                     try:
-                        process_and_log(rpc, txid, "sequence", stats)
+                        process_and_log(rpc, txid, "sequence", stats, persistence)
                         stats.fetched += 1
                     except Exception as exc:
                         stats.rpc_failures += 1
                         print(f"[main] sequence txid={txid} fetch failed: {exc}")
                 else:
                     print(f"[main] sequence event: {label_name}")
+
+            # topic is None on a poll timeout tick (mempool quiet). Falls
+            # through to here regardless of branch above, which is the
+            # point: the flush check must run on a timer, not only when a
+            # message happens to arrive.
+            if persistence.should_flush():
+                persistence.flush()
     except KeyboardInterrupt:
         pass
     finally:
+        persistence.flush()
+        stats.duplicate_count = persist.count_duplicate_transactions(ch)
         print(f"[main] shutdown: {stats.summary()}")
 
 

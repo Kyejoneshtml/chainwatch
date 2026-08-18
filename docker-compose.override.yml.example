@@ -9,6 +9,11 @@
 # the administrative interface, and an attacker who reaches and authenticates
 # to it can inspect wallet data and issue wallet commands.
 #
+# The same applies to ClickHouse's HTTP interface: the committed
+# docker-compose.yml publishes nothing for it, so it is unreachable from the
+# host by design. 8123 is opened here, localhost only, so the ingestor can
+# write to it directly while running outside the container.
+#
 # The committed docker-compose.yml publishes only 8333. That remains the
 # deployment configuration; this file is a local convenience.
 services:
@@ -19,3 +24,6 @@ services:
       - "127.0.0.1:28333:28333"
       - "127.0.0.1:28334:28334"
       - "127.0.0.1:28335:28335"
+  clickhouse:
+    ports:
+      - "127.0.0.1:8123:8123"
