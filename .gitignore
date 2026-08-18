@@ -1,2 +1,6 @@
 bitcoin.conf
 .DS_Store
+
+# Local development only. Publishes bitcoind RPC and ZMQ to 127.0.0.1 so the
+# ingestor can run on the host. Machine-specific; see docker-compose.override.yml.example
+docker-compose.override.yml
