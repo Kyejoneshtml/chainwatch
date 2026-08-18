@@ -1,4 +1,5 @@
 import itertools
+from decimal import Decimal
 
 import requests
 
@@ -6,7 +7,10 @@ import config
 
 
 class RPCError(Exception):
-    pass
+    def __init__(self, code, message, method, params):
+        self.code = code
+        self.message = message
+        super().__init__(f"{method}{params} -> code={code}: {message}")
 
 
 class RPCClient:
@@ -30,12 +34,16 @@ class RPCClient:
         # body on the response -- so the body is parsed before checking
         # status, rather than raise_for_status() discarding it.
         try:
-            body = resp.json()
+            # parse_float=Decimal: BTC amounts come back as JSON floats.
+            # Parsing them as float here would be the exact float-for-money
+            # mistake CLAUDE.md forbids; Decimal preserves the JSON text's
+            # own precision instead.
+            body = resp.json(parse_float=Decimal)
         except ValueError:
             resp.raise_for_status()
             raise
         if body.get("error") is not None:
-            raise RPCError(f"{method}{params or []} -> {body['error']}")
+            raise RPCError(body["error"]["code"], body["error"]["message"], method, params or [])
         resp.raise_for_status()
         return body["result"]
 
@@ -52,3 +60,6 @@ class RPCClient:
         # That is exactly the case this ingestor resolves inputs in.
         # See docs/04-ingestion.md, "include_mempool must be false".
         return self.call("gettxout", [txid, vout, False])
+
+    def getmempoolentry(self, txid):
+        return self.call("getmempoolentry", [txid])

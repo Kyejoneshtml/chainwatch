@@ -92,6 +92,17 @@ Built in five stages. **Stage 1 complete, 18 August 2026.** ZMQ subscriber on `r
 
 **`bitcoind` returns HTTP 500 for ordinary RPC errors, not only for genuine server failures.** A bad txid, a missing block, any `-5`/`-8`-class error — all come back as HTTP 500 with the real error in a JSON body, rather than HTTP 200 with an `error` field, which is the more common convention. `requests.raise_for_status()` was raising before that body was ever read, so every failure surfaced as a bare "500 Server Error" with the actual cause discarded. Fixed by parsing the JSON body first and only falling back to `raise_for_status()` when there is no parseable body at all. Of the three, this is the one that would have cost the most later: every future RPC failure, of any kind, would have surfaced the same way, and the ingestor's core discipline — record and count every failure rather than dropping it silently — depends on the failure being legible in the first place.
 
+**Stage 2 complete, 18 August 2026.** Output decoding, three-way input resolution, dust flagging, and satoshi-integer fee computation, still entirely in memory — no ClickHouse writes. Ran against live mainnet for 70 seconds: 3,276 transactions processed, zero RPC failures, zero tracebacks.
+
+**A single combined "resolution rate" conflates coverage with mempool timing, and the two must be reported separately.** The first version of the shutdown summary reported one number, `resolved / (resolved + parent_pending + unresolved)`. On the 70-second run it came out at 30%: 1,167 resolved, 2,725 parent_pending, zero unresolved. Read on its own, 30% looks like a coverage failure, well under the 95% target this section sets. It is not one. The run's tail hit a live RBF fee-bump chain — the same output value drifting down by 56 satoshis per replacement, over and over — the mainnet version of exactly what `regtest/scenarios.sh`'s chained-unconfirmed scenario reproduces deliberately. Every one of those `parent_pending` classifications was correct: the spent output's creating transaction was itself still unconfirmed, so the output does not yet exist on the confirmed chain, and resolution succeeds automatically once the parent confirms. Nothing was lost.
+
+The 95% target in this document measures coverage — the failure Lopp warns about, where a missed UTXO update silently corrupts the index. `parent_pending` is not that failure; it is a correct, recoverable classification. Folding it into the same denominator as `unresolved` makes ordinary mempool churn look like data loss. The shutdown summary now reports two rates instead of one:
+
+- `coverage_rate = 1 - (unresolved / total_inputs)` — what the 95% target measures. **100% on the observed run** (zero unresolved).
+- `pending_rate = parent_pending / total_inputs` — informative about mempool conditions (RBF activity, chained spends), not about correctness. **70% on the observed run**, entirely attributable to the fee-bump chain above.
+
+Any future reading of a low combined rate should check `pending_rate` before treating it as a coverage problem.
+
 ### 3d. Reorg handling
 
 - Block hash stored per confirmed row

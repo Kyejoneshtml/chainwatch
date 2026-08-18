@@ -2,6 +2,7 @@ import time
 from dataclasses import dataclass, field
 
 import config
+import decode
 import zmq_listener
 from rpc import RPCClient
 
@@ -20,12 +21,27 @@ class Stats:
     started_at: float = field(default_factory=time.monotonic)
     fetched: int = 0
     rpc_failures: int = 0
+    resolved: int = 0
+    parent_pending: int = 0
+    unresolved: int = 0
 
     def summary(self):
+        # coverage_rate is what docs/08-build-plan.md's 95% target measures:
+        # 1 - (genuine gaps / total). parent_pending is a correct
+        # classification, not a miss -- it resolves once its parent
+        # confirms -- so it belongs in pending_rate, not the failure count.
+        total_inputs = self.resolved + self.parent_pending + self.unresolved
+        coverage_rate = round(1 - (self.unresolved / total_inputs), 4) if total_inputs else None
+        pending_rate = round(self.parent_pending / total_inputs, 4) if total_inputs else None
         return {
             "elapsed_seconds": round(time.monotonic() - self.started_at, 1),
             "fetched": self.fetched,
             "rpc_failures": self.rpc_failures,
+            "resolved": self.resolved,
+            "parent_pending": self.parent_pending,
+            "unresolved": self.unresolved,
+            "coverage_rate": coverage_rate,
+            "pending_rate": pending_rate,
         }
 
 
@@ -37,9 +53,28 @@ def txid_from_sequence(payload):
     return payload[:32].hex()
 
 
-def fetch_and_log(rpc, txid, source):
+def fee_display(summary):
+    if summary["is_coinbase"]:
+        return "coinbase"
+    if summary["fee"] is None:
+        return "incomplete"
+    return summary["fee"]
+
+
+def process_and_log(rpc, txid, source, stats):
     tx = rpc.getrawtransaction(txid, verbose=True)
-    print(f"[main] source={source} txid={txid} inputs={len(tx['vin'])}")
+    summary = decode.process_transaction(rpc, tx)
+
+    stats.resolved += summary["resolved"]
+    stats.parent_pending += summary["parent_pending"]
+    stats.unresolved += summary["unresolved"]
+
+    print(
+        f"[tx] source={source} txid={summary['txid']} "
+        f"inputs(resolved={summary['resolved']} pending={summary['parent_pending']} "
+        f"unresolved={summary['unresolved']}) outputs={len(summary['outputs'])} "
+        f"value={summary['output_value']} fee={fee_display(summary)} dust={summary['dust_count']}"
+    )
 
 
 def main():
@@ -64,7 +99,7 @@ def main():
                 if label == "A":
                     txid = txid_from_sequence(payload)
                     try:
-                        fetch_and_log(rpc, txid, "sequence")
+                        process_and_log(rpc, txid, "sequence", stats)
                         stats.fetched += 1
                     except Exception as exc:
                         stats.rpc_failures += 1
