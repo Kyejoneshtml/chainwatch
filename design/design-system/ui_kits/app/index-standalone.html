@@ -1,0 +1,48 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<template id="__bundler_thumbnail" data-bg-color="#111111"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><rect width="100" height="100" fill="#111111"/><text x="50" y="58" font-size="26" fill="#fff" text-anchor="middle" font-family="sans-serif">C</text></svg></template>
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>
+body{margin:0;background:var(--surface-page);color:var(--text-primary)}
+.shell{display:flex;min-height:100vh}
+.sidebar{width:220px;background:var(--surface-raised);border-right:1px solid var(--border);padding:var(--space-6);box-sizing:border-box;font-family:var(--font-sans)}
+.sidebar .brand{font-weight:600;font-size:16px;margin-bottom:var(--space-8)}
+.sidebar .nav-item{font-size:13px;color:var(--text-secondary);padding:8px 0 8px 10px;border-left:2px solid transparent}
+.sidebar .nav-item.active{color:var(--text-primary);font-weight:500;border-left:2px solid var(--text-primary)}
+.content{flex:1;max-width:1280px;padding:var(--space-8);box-sizing:border-box}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" src="AlertsFeed.jsx"></script>
+<script type="text/babel" src="CaseDetail.jsx"></script>
+<script type="text/babel" src="AddressOverview.jsx"></script>
+<script type="text/babel">
+function App() {
+  const [selected, setSelected] = React.useState(null);
+  const [screen, setScreen] = React.useState('alerts');
+  return (
+    <div className="shell">
+      <div className="sidebar">
+        <div className="brand">Chainwatch</div>
+        <div className={"nav-item" + (screen === 'alerts' ? " active" : "")} onClick={() => { setScreen('alerts'); setSelected(null); }} style={{cursor:'pointer'}}>alerts</div>
+        <div className={"nav-item" + (screen === 'address' ? " active" : "")} onClick={() => setScreen('address')} style={{cursor:'pointer'}}>address overview</div>
+        <div className="nav-item">watchlist</div>
+        <div className="nav-item">settings</div>
+      </div>
+      <div className="content">
+        {screen === 'address'
+          ? <AddressOverview onBack={() => setScreen('alerts')} />
+          : selected
+            ? <CaseDetail alert={selected} onBack={() => setSelected(null)} />
+            : <AlertsFeed onSelect={setSelected} />}
+      </div>
+    </div>
+  );
+}
+ReactDOM.render(<App />, document.getElementById('root'));
+</script>
+</body></html>

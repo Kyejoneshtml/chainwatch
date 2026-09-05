@@ -1,0 +1,29 @@
+<!-- @dsCard group="Components" viewport="700x400" name="Status, confidence & warnings" subtitle="Skeleton, empty, live, confidence, invalidated, standing warning" -->
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{margin:0;padding:24px;background:#fff;font-family:var(--font-sans);display:flex;flex-direction:column;gap:16px}</style>
+<div id="root"></div>
+<script type="text/babel">
+const { SkeletonBlock, EmptyState, LiveIndicator, ConfidenceIndicator, InvalidatedState, WarningBlock, AddressLabel } = window.ChainwatchDesignSystem_f0e832;
+ReactDOM.render(
+  <>
+    <div style={{display:'flex',gap:8,flexDirection:'column',width:280}}>
+      <SkeletonBlock width={220} height={12}/>
+      <SkeletonBlock width={160} height={12}/>
+    </div>
+    <EmptyState message="Alerts appear here once a monitored address receives flagged funds."/>
+    <div style={{display:'flex',gap:24,alignItems:'center'}}>
+      <LiveIndicator secondsAgo={12}/>
+      <ConfidenceIndicator label="Likely change" percent={78}/>
+    </div>
+    <InvalidatedState>
+      <span style={{fontFamily:'var(--font-mono)',fontSize:13}}>3FZbgi29…tktZc5 — 0.42100000 BTC</span>
+    </InvalidatedState>
+    <WarningBlock>Chainwatch will never ask for your seed phrase or private keys. Anyone who does is attempting to steal your funds.</WarningBlock>
+  </>,
+  document.getElementById('root')
+);
+</script>

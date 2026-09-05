@@ -1,0 +1,38 @@
+<!-- @dsCard group="Components" viewport="700x470" name="Data table, addresses & amounts" subtitle="Dense table, mono identifiers, tabular amounts, lookalike-address diffing" -->
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{margin:0;padding:24px;background:#fff;font-family:var(--font-sans)}</style>
+<div id="root"></div>
+<script type="text/babel">
+const { DataTable, AddressLabel, MonetaryAmount, SeverityBadge, AddressDiff } = window.ChainwatchDesignSystem_f0e832;
+const real = 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh';
+const fake = 'bc1qxy2kgdygjrsqtzqvn8mrp1493p83kkfjhx0wlh';
+const rows = [
+  { addr: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh', amt: 0.42100000, sev: 'critical' },
+  { addr: '3FZbgi29cpjq2GjdwV8eyHuJJnkLtktZc5', amt: 0.00000320, sev: 'medium' },
+  { addr: '1BoatSLRHtKNngkdXEeobR76b53LETtpyT', amt: 1.00000000, sev: 'low' },
+];
+ReactDOM.render(
+  <>
+  <DataTable
+    columns={[{key:'addr',label:'address'},{key:'sev',label:'severity'},{key:'amt',label:'amount (btc)',align:'right'}]}
+    rows={rows}
+    renderCell={(row,col)=>col.key==='addr'?<AddressLabel address={row.addr}/>:col.key==='sev'?<SeverityBadge severity={row.sev}/>:<MonetaryAmount value={row.amt}/>}
+  />
+  <div style={{marginTop:24}}>
+    <div style={{fontSize:12,color:'var(--text-secondary)',marginBottom:8}}>standalone figures — unit shown</div>
+    <div style={{marginBottom:16,display:'flex',gap:24}}>
+      <MonetaryAmount value={0.42100000}/>
+      <MonetaryAmount value={1250000} unit="sats"/>
+    </div>
+    <div style={{fontSize:12,color:'var(--text-secondary)',marginBottom:8}}>lookalike pair — differing characters emphasised</div>
+    <div style={{marginBottom:4}}><AddressDiff address={real} against={fake}/></div>
+    <div><AddressDiff address={fake} against={real}/></div>
+  </div>
+  </>,
+  document.getElementById('root')
+);
+</script>

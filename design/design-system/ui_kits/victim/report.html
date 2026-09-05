@@ -1,0 +1,159 @@
+<!-- @dsCard group="Victim path" viewport="880x1100" name="Report — the document handed to police" subtitle="Page 1 summary at high fidelity; timeline, trace and methodology as layout" -->
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Chainwatch — trace report</title>
+<link rel="stylesheet" href="../../styles.css">
+<script src="../../doc-page.js"></script>
+<style>
+doc-page:not(:defined){visibility:hidden}
+body{margin:0;font-family:var(--font-sans);color:var(--text-primary)}
+.page{display:flex;flex-direction:column;height:100%;box-sizing:border-box}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.masthead{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--border-heavy);padding-bottom:8px;margin-bottom:24px}
+.masthead .brand{font-size:16px;font-weight:600}
+.masthead .kind{font-size:12px;font-weight:500;color:var(--text-secondary)}
+h1.doc{font-size:22px;line-height:1.3;font-weight:600;margin:0 0 16px}
+h2.sec{font-size:12px;font-weight:500;color:var(--text-secondary);margin:0 0 12px}
+p.body{font-size:13px;line-height:1.6;margin:0 0 12px;text-wrap:pretty}
+.assumption{background:var(--surface-raised);border:1px solid var(--border-strong);border-radius:8px;padding:12px;font-size:12px;line-height:1.5;color:var(--text-primary);margin-bottom:24px}
+.facts{border:1px solid var(--border);border-radius:8px;display:grid;grid-template-columns:1fr 1fr 1fr;margin-bottom:24px}
+.facts div{padding:12px}
+.facts div+div{border-left:1px solid var(--border)}
+.facts .lab{font-size:11px;color:var(--text-secondary);margin-bottom:4px}
+.facts .val{font-size:14px;font-weight:500}
+.actionable{border:1px solid var(--border-heavy);border-radius:8px;padding:12px;font-size:13px;line-height:1.5;margin-bottom:24px}
+.block{border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:16px}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:11px;font-weight:500;color:var(--text-secondary);padding:6px 8px;background:var(--surface-raised);border-bottom:1px solid var(--border)}
+th.r,td.r{text-align:right}
+td{font-size:11px;padding:5px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+.hop{border-bottom:1px solid var(--border);padding:10px 0;display:flex;gap:12px}
+.hop:last-child{border-bottom:none}
+.hop .n{font-size:11px;color:var(--text-muted);width:34px;flex:none}
+.hop .s{font-size:12px;font-weight:500;margin-bottom:3px}
+.hop .d{font-size:11px;color:var(--text-secondary);line-height:1.5}
+.conf{font-size:11px;color:var(--text-secondary)}
+.foot{margin-top:auto;border-top:1px solid var(--border);padding-top:8px;display:flex;justify-content:space-between;gap:16px;font-size:9px;color:var(--text-muted);line-height:1.5}
+.foot .col{max-width:33%;word-break:break-all}
+.foot .lab{color:var(--text-secondary)}
+.placeholder{color:var(--text-muted);font-size:11px;font-style:normal}
+ul.plain{margin:0;padding:0}
+ul.plain li{list-style:none;display:flex;gap:8px;font-size:12px;line-height:1.55;margin-bottom:6px}
+ul.plain li:before{content:"";width:5px;height:5px;border-radius:50%;background:var(--text-muted);flex:none;margin-top:7px}
+.limit{font-size:12px;line-height:1.55;margin-bottom:6px}
+</style>
+</head>
+<body>
+<doc-page size="a4" margin="18mm">
+
+  <section class="page">
+    <div class="masthead"><span class="brand">Chainwatch</span><span class="kind">trace report · case CW-4471</span></div>
+    <h1 class="doc">Summary</h1>
+    <div class="assumption">
+      <strong style="font-weight:500">About this document.</strong> It is written to be read by an officer triaging a queue, and to be understood by the victim handing it over. This page stands alone: it should be enough to decide whether the case is investigable. That assumption has not yet been validated with practitioners and is being tested.
+    </div>
+    <p class="body">On 9 August 2026, 0.42100000 BTC was moved out of a wallet belonging to the reporting person without their authorisation. The wallet had been under continuous monitoring since 6 August 2026.</p>
+    <p class="body">The funds left in a single transaction and were split across three addresses within one minute. The largest portion, 0.31 BTC, was moved again at 16:10 and reached an address that appears to belong to a cryptocurrency exchange.</p>
+    <p class="body">A smaller portion of 0.03 BTC passed through a service that does not publish its records and could not be followed further. This is stated rather than omitted; the gap is documented on page 3.</p>
+    <p class="body">Every movement below is recorded on the public Bitcoin blockchain and can be verified independently by any party, using the transaction identifiers on page 2.</p>
+    <div class="facts">
+      <div><div class="lab">amount taken</div><div class="val mono">0.42100000 BTC</div></div>
+      <div><div class="lab">date</div><div class="val mono">9 Aug 2026, 14:32</div></div>
+      <div><div class="lab">largest portion reached</div><div class="val">exchange-attributed address <span class="conf">(78%)</span></div></div>
+    </div>
+    <div class="actionable">
+      <strong style="font-weight:500">Why this may be actionable.</strong> The trail is documented hop by hop and terminates at an identifiable service that is subject to know-your-customer obligations, meaning a lawful request may be able to link the destination to an account holder. This does not mean the funds can be recovered, and most stolen cryptocurrency is not recovered.
+    </div>
+    <h2 class="sec">contents</h2>
+    <ul class="plain">
+      <li>Page 2 — every movement, with date, time, amount and transaction identifier</li>
+      <li>Page 3 — each hop evidenced, destination addresses, and where the trail ends</li>
+      <li>Page 4 — method, heuristics used, and what this report does not claim</li>
+    </ul>
+    <div class="foot">
+      <div class="col"><span class="lab">generated</span> 13 Aug 2026, 09:14 UTC</div>
+      <div class="col"><span class="lab">chain height</span> <span class="mono">907,412</span><br><span class="lab">block</span> <span class="mono">0000000000000000000a1b2c3d4e5f60718293a4b5c6d7e8</span></div>
+      <div class="col"><span class="lab">document hash (sha-256)</span><br><span class="mono">4f9a2c7e1b8d3a60f5e2c9b4d7a1f8e3c6b0d5a9f2e7c4b1</span></div>
+    </div>
+  </section>
+
+  <section class="page">
+    <div class="masthead"><span class="brand">Chainwatch</span><span class="kind">trace report · case CW-4471</span></div>
+    <h1 class="doc">Timeline</h1>
+    <p class="body">Every movement, in order. Times are UTC. Each identifier can be checked against any public block explorer.</p>
+    <table>
+      <thead><tr><th>date</th><th>time</th><th>movement</th><th class="r">amount (btc)</th><th>transaction id</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">9 Aug 2026</td><td class="mono">14:32</td><td>left the reporting person's wallet</td><td class="r mono">0.42100000</td><td class="mono">f4a1c9e2…a8d0e</td></tr>
+        <tr><td class="mono">9 Aug 2026</td><td class="mono">14:33</td><td>split across three addresses</td><td class="r mono">0.42100000</td><td class="mono">a2b4c6d8…a2b4</td></tr>
+        <tr><td class="mono">9 Aug 2026</td><td class="mono">16:10</td><td>largest portion moved again</td><td class="r mono">0.31000000</td><td class="mono">c6d8e0f2…c6d8</td></tr>
+        <tr><td class="mono">9 Aug 2026</td><td class="mono">16:14</td><td>smaller portion entered an opaque service</td><td class="r mono">0.03000000</td><td class="mono">e0f2a4b6…e0f2</td></tr>
+        <tr><td colspan="5" class="placeholder">— layout only: remaining movements continue in this form, one row per movement, to the end of the trail —</td></tr>
+      </tbody>
+    </table>
+    <div class="foot">
+      <div class="col"><span class="lab">generated</span> 13 Aug 2026, 09:14 UTC</div>
+      <div class="col"><span class="lab">chain height</span> <span class="mono">907,412</span><br><span class="lab">block</span> <span class="mono">0000000000000000000a1b2c3d4e5f60718293a4b5c6d7e8</span></div>
+      <div class="col"><span class="lab">document hash (sha-256)</span><br><span class="mono">4f9a2c7e1b8d3a60f5e2c9b4d7a1f8e3c6b0d5a9f2e7c4b1</span></div>
+    </div>
+  </section>
+
+  <section class="page">
+    <div class="masthead"><span class="brand">Chainwatch</span><span class="kind">trace report · case CW-4471</span></div>
+    <h1 class="doc">Trace</h1>
+    <p class="body">Each hop, the evidence for it, and the confidence attached to any inference. Where a hop could not be resolved, that is stated.</p>
+    <div class="block">
+      <h2 class="sec">hops</h2>
+      <div class="hop"><div class="n mono">1</div><div><div class="s">Funds left the reporting person's wallet</div><div class="d">Single transaction, no change output returned. Destination addresses listed in full on this page.</div></div></div>
+      <div class="hop"><div class="n mono">2</div><div><div class="s">Split across three addresses</div><div class="d">Common-input-ownership heuristic applied. <span class="conf">The three addresses appear to be controlled by one party (81%)</span></div></div></div>
+      <div class="hop"><div class="n mono">3</div><div><div class="s">Largest portion consolidated at a service</div><div class="d">Deposit-address clustering — error rate not yet cited, see page 4. <span class="conf">This address appears to belong to a cryptocurrency exchange (78%)</span></div></div></div>
+      <div class="hop"><div class="n mono">4</div><div><div class="s">Trail ends — 0.03 BTC not followed</div><div class="d">The funds entered a service that does not publish records. No inference is offered about their destination. This is a limit of the available data, not an omission.</div></div></div>
+      <div class="hop"><div class="n mono placeholder">…</div><div><div class="d placeholder">— layout only: one entry per hop, each with its evidence and confidence, in this form —</div></div></div>
+    </div>
+    <div class="block">
+      <h2 class="sec">destination addresses</h2>
+      <div class="placeholder">— layout only: each destination address in full, monospace, with any attribution and its confidence alongside —</div>
+    </div>
+    <div class="foot">
+      <div class="col"><span class="lab">generated</span> 13 Aug 2026, 09:14 UTC</div>
+      <div class="col"><span class="lab">chain height</span> <span class="mono">907,412</span><br><span class="lab">block</span> <span class="mono">0000000000000000000a1b2c3d4e5f60718293a4b5c6d7e8</span></div>
+      <div class="col"><span class="lab">document hash (sha-256)</span><br><span class="mono">4f9a2c7e1b8d3a60f5e2c9b4d7a1f8e3c6b0d5a9f2e7c4b1</span></div>
+    </div>
+  </section>
+
+  <section class="page">
+    <div class="masthead"><span class="brand">Chainwatch</span><span class="kind">trace report · case CW-4471</span></div>
+    <h1 class="doc">Methodology</h1>
+    <div class="block">
+      <h2 class="sec">tracing rule</h2>
+      <p class="body" style="margin:0">Funds are traced first-in, first-out. Where stolen and unrelated funds are mixed in one address, the earliest deposit is treated as the earliest withdrawal, following <em>Clayton's Case</em> (1816) as applied to mixed accounts. FIFO is a legal convention, not a statement of physical fact: the blockchain does not record which specific funds moved.</p>
+    </div>
+    <div class="block">
+      <h2 class="sec">heuristics used</h2>
+      <table>
+        <thead><tr><th>heuristic</th><th>what it infers</th><th class="r">average error rate</th></tr></thead>
+        <tbody>
+          <tr><td>common input ownership</td><td>inputs to one transaction share a controller</td><td class="r mono">63.46%</td></tr>
+          <tr><td>one-time change</td><td>which output returns to the sender</td><td class="r mono">92.66%</td></tr>
+          <tr><td>deposit-address clustering</td><td>an address belongs to a named service</td><td class="r placeholder">not yet cited</td></tr>
+        </tbody>
+      </table>
+      <p class="body" style="margin:8px 0 0;font-size:11px;color:var(--text-secondary)">These error rates are high, and are stated rather than omitted. The lowest error is achieved by applying both heuristics together rather than either alone; neither is relied on in isolation in this report. Figures are from a 2022 published analysis of blockchain address clustering algorithms; the full citation is held in the project's <span class="mono">docs/11-prior-art.md</span> and is to be printed here before release.</p>
+      <p class="body" style="margin:8px 0 0;font-size:11px;color:var(--text-secondary)">No error rate is yet cited for deposit-address clustering. The service attribution on page 3, and the actionability statement on page 1 that rests on it, therefore carry an undisclosed error rate. That is a known gap in this report and is recorded here rather than left for the reader to discover.</p>
+    </div>
+    <div class="block">
+      <h2 class="sec">what this report does not claim</h2>
+      <div class="limit">It does not identify any person. Attribution is to services and address clusters, never to individuals.</div>
+      <div class="limit">It does not establish that a crime occurred. That is a matter for investigation.</div>
+      <div class="limit">It does not prove which specific coins moved. FIFO is an accounting convention applied to mixed funds.</div>
+      <div class="limit">It does not assert anything about funds that entered services which do not publish records.</div>
+      <div class="limit">It does not indicate that funds are recoverable. Most stolen cryptocurrency is not recovered.</div>
+      <div class="limit">It does not claim to be admissible evidence. No heuristic-based address clustering algorithm has been successfully admitted in court proceedings: under the <em>Daubert</em> standard an algorithm should have a known error rate, and none has been able to report one. This report states the error rates it has, which addresses that gap for two of its three heuristics — but stating an error rate does not by itself establish admissibility, and one rate remains uncited.</div>
+    </div>
+    <div class="foot">
+      <div class="col"><span class="lab">generated</span> 13 Aug 2026, 09:14 UTC</div>
+      <div class="col"><span class="lab">chain height</span> <span class="mono">907,412</span><br><span class="lab">block</span> <span class="mono">0000000000000000000a1b2c3d4e5f60718293a4b5c6d7e8</span></div>
+      <div class="col"><span class="lab">document hash (sha-256)</span><br><span class="mono">4f9a2c7e1b8d3a60f5e2c9b4d7a1f8e3c6b0d5a9f2e7c4b1</span></div>
+    </div>
+  </section>
+
+</doc-page>
+</body></html>

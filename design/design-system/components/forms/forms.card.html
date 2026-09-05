@@ -1,0 +1,18 @@
+<!-- @dsCard group="Components" viewport="700x120" name="Form controls" subtitle="Input and select, matched 36px sizing" -->
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{margin:0;padding:24px;background:#fff;font-family:var(--font-sans);display:flex;gap:12px}</style>
+<div id="root"></div>
+<script type="text/babel">
+const { Input, Select } = window.ChainwatchDesignSystem_f0e832;
+ReactDOM.render(
+  <>
+    <Input placeholder="search address or tx id" />
+    <Select options={[{value:'all',label:'all severities'},{value:'critical',label:'critical'}]} />
+  </>,
+  document.getElementById('root')
+);
+</script>

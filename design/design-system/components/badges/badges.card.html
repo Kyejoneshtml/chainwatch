@@ -1,0 +1,27 @@
+<!-- @dsCard group="Components" viewport="700x150" name="Severity & confirmation badges" subtitle="Four severity levels; mempool confirmation state" -->
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{margin:0;padding:24px;background:#fff;font-family:var(--font-sans)}.row{display:flex;gap:12px;align-items:center;margin-bottom:16px}</style>
+<div id="root"></div>
+<script type="text/babel">
+const { SeverityBadge, ConfirmationBadge } = window.ChainwatchDesignSystem_f0e832;
+ReactDOM.render(
+  <>
+    <div className="row">
+      <SeverityBadge severity="critical" />
+      <SeverityBadge severity="high" />
+      <SeverityBadge severity="medium" />
+      <SeverityBadge severity="low" />
+    </div>
+    <div className="row">
+      <ConfirmationBadge confirmations={0} />
+      <ConfirmationBadge confirmations={1} />
+      <ConfirmationBadge confirmations={6} />
+    </div>
+  </>,
+  document.getElementById('root')
+);
+</script>

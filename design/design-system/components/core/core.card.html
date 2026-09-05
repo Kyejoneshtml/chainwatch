@@ -1,0 +1,22 @@
+<!-- @dsCard group="Components" viewport="700x230" name="Statement, buttons & card" subtitle="Victim-facing sentence; primary, secondary, destructive, disabled" -->
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{margin:0;padding:24px;background:#fff;display:flex;flex-wrap:wrap;gap:16px;align-items:center;font-family:var(--font-sans)}</style>
+<div id="root"></div>
+<script type="text/babel">
+const { Button, Card, Statement } = window.ChainwatchDesignSystem_f0e832;
+ReactDOM.render(
+  <>
+    <div style={{width:'100%',marginBottom:24}}><Statement style={{margin:0}}>Your funds moved 4 hours ago.</Statement></div>
+    <Button variant="primary">create trace</Button>
+    <Button variant="secondary">cancel</Button>
+    <Button variant="destructive">delete case</Button>
+    <Button variant="primary" disabled>disabled</Button>
+    <Card style={{fontSize:13,color:'var(--text-secondary)'}}>card container</Card>
+  </>,
+  document.getElementById('root')
+);
+</script>

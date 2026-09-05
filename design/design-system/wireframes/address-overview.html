@@ -1,0 +1,112 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Address overview — wireframe</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#fff;color:#222;padding:32px}
+.mono{font-family:'Courier New',monospace}
+.page{max-width:1280px;margin:0 auto}
+.box{border:1px solid #999;background:#fff}
+.label{font-size:10px;text-transform:uppercase;color:#888;letter-spacing:.03em;margin-bottom:4px}
+.section{margin-bottom:48px}
+.hdr-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:48px;gap:16px}
+.addr-block{display:flex;align-items:center;gap:10px}
+.addr-block .mono{font-size:18px;border:1px dashed #999;padding:6px 10px}
+.copy-ico{width:22px;height:22px;border:1px solid #999;display:flex;align-items:center;justify-content:center;font-size:11px;color:#888}
+.watch-btn{border:2px solid #222;padding:10px 20px;font-weight:bold;font-size:13px}
+.stats-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:16px}
+.stat{padding:16px;text-align:right}
+.stat .mono{font-size:16px;font-variant-numeric:tabular-nums}
+.risk-row{display:flex;gap:32px}
+.risk-score{width:160px;padding:24px;text-align:center;flex:none}
+.risk-score .num{font-size:40px;font-weight:bold}
+.risk-factors{flex:1;padding:16px}
+.factor{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px dashed #ccc;font-size:13px}
+.factor:last-child{border-bottom:none}
+.spark{height:80px;padding:12px;display:flex;align-items:flex-end;gap:3px}
+.spark span{display:block;width:6px;background:#bbb}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-size:10px;text-transform:uppercase;color:#888;font-weight:normal;padding:8px 10px;border-bottom:1px solid #999}
+th.num,td.num{text-align:right}
+td{padding:6px 10px;border-bottom:1px solid #ddd;vertical-align:middle}
+tr.unconfirmed td{background:repeating-linear-gradient(45deg,#f7f7f7,#f7f7f7 6px,#eee 6px,#eee 12px)}
+.pill{display:inline-block;border:1px solid #999;padding:1px 6px;font-size:11px}
+.pager{display:flex;justify-content:flex-end;gap:8px;margin-top:12px;font-size:12px}
+.pager span{border:1px solid #999;padding:4px 10px}
+h2.section-title{font-size:13px;text-transform:uppercase;color:#888;letter-spacing:.03em;margin:0 0 16px;font-weight:normal}
+</style></head>
+<body>
+<div class="page">
+
+<div class="hdr-row">
+  <div class="addr-block">
+    <span class="mono">bc1qxy2kgd…8s7v3n0</span>
+    <div class="copy-ico">⧉</div>
+  </div>
+  <div class="watch-btn">+ watch this address</div>
+</div>
+
+<div class="section">
+  <h2 class="section-title">overview</h2>
+  <div class="stats-grid box">
+    <div class="stat"><div class="label" style="text-align:right">balance</div><div class="mono">0.42100000</div></div>
+    <div class="stat"><div class="label" style="text-align:right">total received</div><div class="mono">3.88000000</div></div>
+    <div class="stat"><div class="label" style="text-align:right">total sent</div><div class="mono">3.45900000</div></div>
+    <div class="stat"><div class="label" style="text-align:right">tx count</div><div class="mono">128</div></div>
+    <div class="stat"><div class="label" style="text-align:right">first seen</div><div class="mono">2019-03-11</div></div>
+    <div class="stat"><div class="label" style="text-align:right">last seen</div><div class="mono">2026-08-09</div></div>
+  </div>
+</div>
+
+<div class="section">
+  <h2 class="section-title">risk</h2>
+  <div class="risk-row">
+    <div class="risk-score box">
+      <div class="label">risk score</div>
+      <div class="num">78</div>
+      <div class="label" style="margin-top:4px">/ 100</div>
+    </div>
+    <div class="risk-factors box">
+      <div class="label" style="margin-bottom:8px">contributing factors — expanded, not hidden behind a click</div>
+      <div class="factor"><span>funds traced to flagged mixer</span><span class="mono">+35</span></div>
+      <div class="factor"><span>rapid fan-out pattern (40+ addresses)</span><span class="mono">+22</span></div>
+      <div class="factor"><span>counterparty on sanctions watchlist</span><span class="mono">+15</span></div>
+      <div class="factor"><span>address age &gt; 5 years</span><span class="mono">−4</span></div>
+      <div class="factor"><span>no prior alerts</span><span class="mono">−0</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2 class="section-title">activity</h2>
+  <div class="spark box">
+    <span style="height:20%"></span><span style="height:35%"></span><span style="height:15%"></span><span style="height:60%"></span>
+    <span style="height:40%"></span><span style="height:80%"></span><span style="height:30%"></span><span style="height:55%"></span>
+    <span style="height:25%"></span><span style="height:70%"></span><span style="height:45%"></span><span style="height:90%"></span>
+    <span style="height:20%"></span><span style="height:38%"></span><span style="height:60%"></span><span style="height:33%"></span>
+    <span style="height:15%"></span><span style="height:50%"></span><span style="height:65%"></span><span style="height:28%"></span>
+  </div>
+  <div class="label" style="margin-top:6px">transaction volume over time</div>
+</div>
+
+<div class="section">
+  <h2 class="section-title">transactions</h2>
+  <div class="box">
+    <table>
+      <thead><tr>
+        <th>date</th><th>direction</th><th>counterparty</th><th class="num">amount</th><th class="num">confirmations</th>
+      </tr></thead>
+      <tbody>
+        <tr><td class="mono">2026-08-09</td><td><span class="pill">in</span></td><td class="mono">3FZbgi29…tktZc5</td><td class="mono num">0.42100000</td><td class="num mono">3</td></tr>
+        <tr class="unconfirmed"><td class="mono">2026-08-09</td><td><span class="pill">out</span></td><td class="mono">1BoatSLR…Ttpy T</td><td class="mono num">0.01200000</td><td class="num"><span class="pill">unconfirmed</span></td></tr>
+        <tr><td class="mono">2026-08-07</td><td><span class="pill">in</span></td><td class="mono">bc1qar0s…f5mdq</td><td class="mono num">0.05000000</td><td class="num mono">210</td></tr>
+        <tr><td class="mono">2026-08-02</td><td><span class="pill">out</span></td><td class="mono">3M219KR5…2DjxRP6</td><td class="mono num">0.00003200</td><td class="num mono">412</td></tr>
+        <tr><td class="mono">2026-07-30</td><td><span class="pill">in</span></td><td class="mono">bc1qxy2k…8s7v3n0</td><td class="mono num">1.00000000</td><td class="num mono">890</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="pager">
+    <span>&larr; prev</span><span>1</span><span>2</span><span>3</span><span>next &rarr;</span>
+  </div>
+</div>
+
+</div>
+</body></html>
