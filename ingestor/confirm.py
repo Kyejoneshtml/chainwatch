@@ -107,7 +107,7 @@ def known_txids(ch, txids):
     return known
 
 
-def process_block(rpc, ch, height, block_hash, persistence, stats):
+def process_block(rpc, ch, height, block_hash, persistence, stats, matcher):
     block = rpc.getblock(block_hash, 3)
     block_time = persist.block_time_str(block["time"])
 
@@ -117,6 +117,7 @@ def process_block(rpc, ch, height, block_hash, persistence, stats):
     for tx in block["tx"]:
         summary = process_confirmed_transaction(tx)
         persistence.add_confirmed(summary, tx["vsize"], height, block_hash, block_time)
+        matcher.check(summary, "confirmed", stats)
 
         stats.tx_confirmed += 1
         if tx["txid"] not in already_known:
@@ -132,9 +133,9 @@ def process_block(rpc, ch, height, block_hash, persistence, stats):
     stats.blocks_processed += 1
 
 
-def _process_and_time(rpc, ch, height, block_hash, persistence, stats):
+def _process_and_time(rpc, ch, height, block_hash, persistence, stats, matcher):
     start = time.monotonic()
-    process_block(rpc, ch, height, block_hash, persistence, stats)
+    process_block(rpc, ch, height, block_hash, persistence, stats, matcher)
     elapsed = time.monotonic() - start
     stats.max_block_seconds = max(stats.max_block_seconds, elapsed)
     print(f"[block] height={height} hash={block_hash} elapsed={elapsed:.2f}s")
@@ -146,7 +147,7 @@ def _process_and_time(rpc, ch, height, block_hash, persistence, stats):
         )
 
 
-def catch_up_to_tip(rpc, ch, persistence, stats):
+def catch_up_to_tip(rpc, ch, persistence, stats, matcher):
     """Walk forward one block at a time from the last confirmed height to
     the node's current tip -- covers normal single-block advance, catch-up
     after downtime, and reprocessing after a reorg rollback, where the node
@@ -158,4 +159,4 @@ def catch_up_to_tip(rpc, ch, persistence, stats):
     while persistence.last_block_height < tip_height:
         next_height = persistence.last_block_height + 1
         next_hash = rpc.getblockhash(next_height)
-        _process_and_time(rpc, ch, next_height, next_hash, persistence, stats)
+        _process_and_time(rpc, ch, next_height, next_hash, persistence, stats, matcher)

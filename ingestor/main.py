@@ -6,6 +6,7 @@ import confirm
 import decode
 import persist
 import reorg
+import watchlist
 import zmq_listener
 from ch_client import CHClient
 from rpc import RPCClient
@@ -43,6 +44,7 @@ class Stats:
     alerts_invalidated: int = 0
     reorg_check_failures: int = 0  # includes ReorgExceedsWindow -- a genuine
     # emergency, not routine failure, but counted here so it's never silent
+    watchlist_matches: int = 0
 
     def summary(self):
         # coverage_rate is what docs/08-build-plan.md's 95% target measures:
@@ -74,6 +76,7 @@ class Stats:
             "tx_reverted": self.tx_reverted,
             "alerts_invalidated": self.alerts_invalidated,
             "reorg_check_failures": self.reorg_check_failures,
+            "watchlist_matches": self.watchlist_matches,
         }
 
 
@@ -93,7 +96,7 @@ def fee_display(summary):
     return summary["fee"]
 
 
-def process_and_log(rpc, txid, source, stats, persistence):
+def process_and_log(rpc, txid, source, stats, persistence, matcher):
     tx = rpc.getrawtransaction(txid, verbose=True)
     summary = decode.process_transaction(rpc, tx)
 
@@ -101,6 +104,7 @@ def process_and_log(rpc, txid, source, stats, persistence):
     stats.parent_pending += summary["parent_pending"]
     stats.unresolved += summary["unresolved"]
     persistence.add(summary, tx["vsize"])
+    matcher.check(summary, "mempool", stats)
 
     print(
         f"[tx] source={source} txid={summary['txid']} "
@@ -140,6 +144,9 @@ def main():
     )
     last_reorg_check = time.monotonic()
 
+    matcher = watchlist.WatchlistMatcher(ch, config.WATCHLIST_REFRESH_SECONDS)
+    matcher.load()  # prints its own count -- see watchlist.py
+
     try:
         for topic, payload in zmq_listener.listen():
             if topic == "rawtx":
@@ -155,7 +162,7 @@ def main():
                 if label == "A":
                     txid = txid_from_sequence(payload)
                     try:
-                        process_and_log(rpc, txid, "sequence", stats, persistence)
+                        process_and_log(rpc, txid, "sequence", stats, persistence, matcher)
                         stats.fetched += 1
                     except Exception as exc:
                         stats.rpc_failures += 1
@@ -167,7 +174,7 @@ def main():
                     # block at a time from the last confirmed height so
                     # nothing in between is skipped.
                     try:
-                        confirm.catch_up_to_tip(rpc, ch, persistence, stats)
+                        confirm.catch_up_to_tip(rpc, ch, persistence, stats, matcher)
                     except Exception as exc:
                         stats.rpc_failures += 1
                         print(f"[main] block confirmation failed at height={persistence.last_block_height + 1}: {exc}")
@@ -178,7 +185,7 @@ def main():
                     # periodic timer, for faster detection.
                     print(f"[main] sequence event: {label_name} -- checking for reorg")
                     try:
-                        reorg.check_and_handle(rpc, ch, persistence, stats)
+                        reorg.check_and_handle(rpc, ch, persistence, stats, matcher)
                     except Exception as exc:
                         stats.reorg_check_failures += 1
                         print(f"[main] reorg check (triggered by 'D') failed: {exc}")
@@ -187,17 +194,19 @@ def main():
 
             # topic is None on a poll timeout tick (mempool quiet). Falls
             # through to here regardless of branch above, which is the
-            # point: both the flush check and the periodic reorg check must
-            # run on a timer, not only when a message happens to arrive.
+            # point: the flush check, the periodic reorg check, and the
+            # watchlist refresh must all run on a timer, not only when a
+            # message happens to arrive.
             if persistence.should_flush():
                 persistence.flush()
             if time.monotonic() - last_reorg_check >= reorg.REORG_CHECK_SECONDS:
                 last_reorg_check = time.monotonic()
                 try:
-                    reorg.check_and_handle(rpc, ch, persistence, stats)
+                    reorg.check_and_handle(rpc, ch, persistence, stats, matcher)
                 except Exception as exc:
                     stats.reorg_check_failures += 1
                     print(f"[main] periodic reorg check failed: {exc}")
+            matcher.maybe_refresh()
     except KeyboardInterrupt:
         pass
     finally:

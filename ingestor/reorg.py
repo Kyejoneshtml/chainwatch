@@ -128,7 +128,7 @@ def _invalidate_alerts(ch, orphaned_hashes):
     return before
 
 
-def check_and_handle(rpc, ch, persistence, stats):
+def check_and_handle(rpc, ch, persistence, stats, matcher):
     """Entry point for both triggers: the periodic timer in main.py's loop,
     and the ZMQ sequence 'D' event. Detects, rolls back, and reprocesses --
     the whole of docs/04-ingestion.md's five rollback steps.
@@ -173,7 +173,7 @@ def check_and_handle(rpc, ch, persistence, stats):
     )
 
     try:
-        confirm.catch_up_to_tip(rpc, ch, persistence, stats)
+        confirm.catch_up_to_tip(rpc, ch, persistence, stats, matcher)
     except Exception as exc:
         stats.rpc_failures += 1
         print(f"[reorg] reprocessing after rollback failed: {exc}")

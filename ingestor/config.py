@@ -54,3 +54,7 @@ CH_PORT = int(os.environ["CH_PORT"])
 CH_USER = os.environ["CH_USER"]
 CH_PASSWORD = os.environ["CH_PASSWORD"]
 CH_DATABASE = os.environ["CH_DATABASE"]
+
+# Optional, not in REQUIRED -- existing deployments don't need to set this.
+# See watchlist.py for why 30s.
+WATCHLIST_REFRESH_SECONDS = int(os.environ.get("WATCHLIST_REFRESH_SECONDS", "30"))
