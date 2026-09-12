@@ -13,13 +13,20 @@
 -- localhost by /etc/clickhouse-server/users.d/default-user.xml and cannot
 -- be used through the published host port at all, by design -- see
 -- ingestor/README.md for the diagnosis. 'ingestor' is scoped instead of
--- widening that restriction: SELECT and INSERT on chainwatch only, no
--- CREATE, no DROP, no ALTER. It writes rows and reads checkpoints; nothing
--- else. Stage 5's reorg rollback will need ALTER on transactions/flows --
--- add that grant then, not now.
+-- widening that restriction: SELECT and INSERT on chainwatch, plus one
+-- narrow mutation grant (below) for stage 5. No CREATE, no DROP, no
+-- unscoped ALTER.
 
 CREATE USER IF NOT EXISTS ingestor
 IDENTIFIED WITH plaintext_password BY 'CHANGEME'
 HOST IP '172.16.0.0/12';
 
 GRANT SELECT, INSERT ON chainwatch.* TO ingestor;
+
+-- Stage 5 (reorg rollback): alerts.invalidated is designed to be flipped by
+-- ALTER TABLE ... UPDATE (see 06_alerts.sql's comment), which SELECT+INSERT
+-- cannot do. Reorg rollback never mutates `transactions` or `flows` in
+-- place -- reverted rows are new INSERTs, the same pattern the pending ->
+-- confirmed transition already uses -- so this is the only mutation grant
+-- the ingestor needs, scoped to the one table and the one privilege.
+GRANT ALTER UPDATE ON chainwatch.alerts TO ingestor;

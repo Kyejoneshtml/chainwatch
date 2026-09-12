@@ -8,6 +8,8 @@ services:
     command: -conf=/config/bitcoin.conf
     ports:
       - "18443:18443"
+      - "18532:28332"
+      - "18535:28335"
     networks:
       - regtest
 
@@ -20,6 +22,24 @@ services:
     command: -conf=/config/bitcoin.conf
     ports:
       - "18453:18443"
+    networks:
+      - regtest
+
+  # Disposable, for regtest/ingestor-rollback-test.sh only. Deliberately
+  # separate from the real `clickhouse` container in docker-compose.yml:
+  # reusing that one would mix synthetic regtest txids into real
+  # fraud-analytics data, and cleaning them back out would need DELETE/ALTER
+  # DELETE grants that serve no purpose outside this test. No persistent
+  # volume -- state is meant to vanish with the container.
+  clickhouse-regtest:
+    image: clickhouse/clickhouse-server:25.8.30.16
+    container_name: clickhouse-regtest
+    environment:
+      CLICKHOUSE_DB: chainwatch
+    volumes:
+      - ./schema:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "18123:8123"
     networks:
       - regtest
 

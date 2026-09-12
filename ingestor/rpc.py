@@ -63,3 +63,14 @@ class RPCClient:
 
     def getmempoolentry(self, txid):
         return self.call("getmempoolentry", [txid])
+
+    def getblockhash(self, height):
+        return self.call("getblockhash", [height])
+
+    def getblock(self, block_hash, verbosity=1):
+        # verbosity=3 embeds `prevout` (value + scriptPubKey) on every vin --
+        # verified against the live node -- which is how confirmed-transaction
+        # input resolution works (see confirm.py): the output is already spent
+        # by the time its containing transaction confirms, so gettxout(...,
+        # include_mempool=false) returns null and cannot be used here.
+        return self.call("getblock", [block_hash, verbosity])

@@ -1,8 +1,16 @@
 import time
+from collections import deque
 from datetime import datetime, timezone
 
 FLUSH_ROWS = 1000
 FLUSH_SECONDS = 2.0
+
+REORG_WINDOW = 100  # in-memory (height, hash) history reorg.py compares
+# against the node's current view. Empty after a restart -- until it
+# refills from freshly confirmed blocks, only the single checkpointed tip
+# is comparable. 100 comfortably covers regtest testing and Lopp's observed
+# mainnet reorg depths; a reorg deeper than this is a genuine emergency
+# (reorg.ReorgExceedsWindow), not a case to guess at.
 
 EPOCH = "1970-01-01 00:00:00"  # sentinel for block_time on unconfirmed rows,
 # the same idea as the schema's existing block_height=0 / block_hash=''
@@ -15,15 +23,21 @@ def now_str():
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
 
-def build_transaction_row(summary, vsize, seen_at):
+def block_time_str(unix_ts):
+    # block_time is DateTime, not DateTime64 -- no milliseconds component.
+    return datetime.fromtimestamp(unix_ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def build_transaction_row(summary, vsize, seen_at, status="pending",
+                           block_height=0, block_hash="", block_time=EPOCH):
     resolved_value = sum(i["value"] for i in summary["inputs"] if i["state"] == "resolved")
     return {
         "txid": summary["txid"],
-        "status": "pending",
+        "status": status,
         "seen_at": seen_at,
-        "block_height": 0,
-        "block_hash": "",
-        "block_time": EPOCH,
+        "block_height": block_height,
+        "block_hash": block_hash,
+        "block_time": block_time,
         "input_count": len(summary["inputs"]),
         "output_count": len(summary["outputs"]),
         "input_value": resolved_value,  # sum of resolved inputs only -- see
@@ -41,7 +55,7 @@ def build_transaction_row(summary, vsize, seen_at):
     }
 
 
-def build_flow_rows(summary, seen_at):
+def build_flow_rows(summary, seen_at, block_height=0, block_hash="", block_time=EPOCH):
     rows = []
     for position, inp in enumerate(summary["inputs"]):
         rows.append({
@@ -51,9 +65,9 @@ def build_flow_rows(summary, seen_at):
             "address": inp["address"] or "",
             "value": inp["value"] if inp["value"] is not None else 0,
             "address_type": inp["script_type"] or "",
-            "block_height": 0,
-            "block_hash": "",
-            "block_time": EPOCH,
+            "block_height": block_height,
+            "block_hash": block_hash,
+            "block_time": block_time,
             "seen_at": seen_at,
             "is_change": 0,
             "change_confidence": 0,
@@ -68,9 +82,9 @@ def build_flow_rows(summary, seen_at):
             "address": out["address"] or "",
             "value": out["value"],
             "address_type": out["script_type"] or "",
-            "block_height": 0,
-            "block_hash": "",
-            "block_time": EPOCH,
+            "block_height": block_height,
+            "block_hash": block_hash,
+            "block_time": block_time,
             "seen_at": seen_at,
             "is_change": 0,
             "change_confidence": 0,
@@ -82,17 +96,62 @@ def build_flow_rows(summary, seen_at):
 
 
 class Persistence:
-    def __init__(self, ch, stats):
+    def __init__(self, ch, stats, last_block_height=0, last_block_hash=""):
         self.ch = ch
         self.stats = stats
         self.tx_buffer = []
         self.flow_buffer = []
         self.last_flush = time.monotonic()
+        # Real checkpoint state, read by the caller from the `checkpoints`
+        # table (or set to the current tip on a fresh install -- see
+        # main.py) rather than the stage-3 empty sentinel.
+        self.last_block_height = last_block_height
+        self.last_block_hash = last_block_hash
+        self.recent_confirmed = deque(maxlen=REORG_WINDOW)
+        if last_block_height > 0:
+            # Seed with the checkpoint tip itself, not just blocks confirmed
+            # this run -- otherwise a reorg striking the very first block
+            # confirmed after startup has no older, still-matching entry to
+            # fall back to and is wrongly treated as exceeding the window.
+            self.recent_confirmed.append((last_block_height, last_block_hash))
 
     def add(self, summary, vsize):
         seen_at = now_str()
         self.tx_buffer.append(build_transaction_row(summary, vsize, seen_at))
         self.flow_buffer.extend(build_flow_rows(summary, seen_at))
+
+    def add_confirmed(self, summary, vsize, block_height, block_hash, block_time):
+        seen_at = now_str()
+        self.tx_buffer.append(build_transaction_row(
+            summary, vsize, seen_at, status="confirmed",
+            block_height=block_height, block_hash=block_hash, block_time=block_time,
+        ))
+        self.flow_buffer.extend(build_flow_rows(
+            summary, seen_at,
+            block_height=block_height, block_hash=block_hash, block_time=block_time,
+        ))
+
+    def mark_block_confirmed(self, height, block_hash):
+        self.last_block_height = height
+        self.last_block_hash = block_hash
+        self.recent_confirmed.append((height, block_hash))
+
+    def rewind_to(self, height, block_hash):
+        """Used by reorg.py after a rollback, not mark_block_confirmed: the
+        (height, block_hash) pair being rewound to is already in
+        recent_confirmed (it's the entry the divergence check matched on),
+        so appending it again would leave a duplicate. Everything above it
+        is dropped -- it described the now-orphaned chain.
+        """
+        self.last_block_height = height
+        self.last_block_hash = block_hash
+        self.recent_confirmed = deque(
+            ((h, hh) for h, hh in self.recent_confirmed if h <= height),
+            maxlen=REORG_WINDOW,
+        )
+
+    def revert_transaction(self, tx_row):
+        self.tx_buffer.append(tx_row)
 
     def should_flush(self):
         return (
@@ -130,14 +189,8 @@ class Persistence:
         try:
             self.ch.insert_rows("checkpoints", [{
                 "component": "ingestor",
-                # Stage 3 does not track confirmed blocks -- that starts in
-                # stage 4. Writing the current chain tip here would put a
-                # plausible-looking but false value in a field later code
-                # reads as "processed up to here", which is exactly the
-                # class of silent error docs/04-ingestion.md warns about.
-                # Empty/0 is honest; a guessed block position is not.
-                "last_block_hash": "",
-                "last_block_height": 0,
+                "last_block_hash": self.last_block_hash,
+                "last_block_height": self.last_block_height,
                 "last_run_at": now_str(),
             }])
         except Exception as exc:
