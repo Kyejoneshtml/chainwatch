@@ -181,6 +181,26 @@ Zero messages lost, in every run. (Received exceeds published in each case becau
 
 **Decision: periodic mempool reconciliation, specified in `04-ingestion.md` as the general-purpose recovery mechanism for exactly this failure mode, is deliberately not built.** It remains the documented fallback if this finding is ever contradicted — by a much larger catch-up gap, a slower node, or a busier mempool — but building it now would be solving a problem this measurement did not find.
 
+### Phase 4a: watchlist matcher — COMPLETE
+
+In-memory Python dict, refreshed on a 30s timer, checked against every transaction on both the mempool path and the confirmed-block path. `ingestor/watchlist_cli.py` manages the list. Verified on live mainnet (718,659 real matches against a genuinely active address across one run) and on regtest with a deliberately deterministic test (`regtest/ingestor-watchlist-test.sh`: watch added to an already-running ingestor, funds sent to it, funds spent from it, both sides matched).
+
+### Phase 4b: rule 1, watchlist movement — shadow mode implemented; the first shadow measurement is itself the finding
+
+`detection/watchlist_movement.py`, a genuinely separate scheduled component (own `config.py` and `ch_client.py`, no RPC or ZMQ dependency), polls every 15s and writes `is_shadow = 1` alerts for funds moving from a watched address, exactly as specified in `06-detection.md`. Confidence is a new concept as of this phase: rule 1 is an **observation** rule (see `06-detection.md`, "Observation rules vs inference rules," added this phase) and stores `confidence = 0` with the reason in `detail`, never a fabricated figure.
+
+**480 shadow alerts, one address, one detection pass.** DoD verification watched `bc1q3zcdunpmqgn8enyxa3smu7fwrfvya35dz3uvjy` — confirmed genuinely active at the time, not assumed — and the first run wrote 480 rows to `alerts`, queried directly and confirmed real (not a log line). A second run against the same state produced zero new candidates and zero duplicates, confirming the watermark and `(watch_id, txid)` dedup both hold.
+
+**The rule is not wrong. This is the finding shadow mode exists to produce.** Every one of the 480 is a genuine movement from the watched address — the rule is behaving exactly as specified. The number itself is the problem: a victim watching one wallet, under this rule as currently specified, would have received 480 notifications from a single pass. That is `06-detection.md`'s own alert-fatigue warning ("the alerts you close too quickly because there are simply too many of them"), measured directly rather than predicted from industry figures.
+
+**Stated plainly: `watchlist_movement` as specified in `06-detection.md` is not deliverable to a real user without either a materially higher minimum-value threshold, aggregation across a time window, or both.** Not fixed here, and the threshold was not tuned to make this number smaller — the honest record is 480 alerts per address per pass, on an address that happened to be active, under the rule exactly as written.
+
+**Two qualifications belong in the same record as the number, not left for someone to discover separately.** First, this address was deliberately chosen *for* being highly active (the same self-chaining address used to prove the phase 4a matcher), specifically so a DoD test would have something to observe without an open-ended wait — that makes 480 closer to a worst case than a typical one. Second, a genuinely dormant victim wallet, which is the more realistic watch target for this product, would produce close to zero alerts under the same rule. Both facts sit next to the number: the rule is not calibrated for its actual target case, and the one data point gathered so far says nothing about what that target case would actually produce.
+
+**Tuning the threshold or adding windowed aggregation is deferred, not decided.** Whatever the fix, it needs measurement against a realistic watch target, not a re-run against the same worst-case address with a bigger threshold typed in.
+
+**Incidental finding, testing methodology rather than the code under test:** `kill -INT` to a backgrounded process in this development environment does not reliably convert to `KeyboardInterrupt` — confirmed with a minimal reproduction (a bare `time.sleep()` under the same signal, same non-delivery). This means every earlier "graceful shutdown" in this project confirmed via `kill -INT` in a background-job test harness (including the ingestor's, several times, in stage 4/5 testing) most likely exercised the `SIGKILL` fallback after its grace-period timeout, not the `try/except KeyboardInterrupt/finally` path itself — visible in retrospect as the "Killed: 9" lines bash printed after those runs, which were read as routine cleanup noise at the time rather than as evidence the graceful path was never actually taken. The `try/except KeyboardInterrupt/finally` shutdown pattern itself is standard, correct CPython behavior independent of this environment quirk, but it has not been positively demonstrated in this project by any test that relied on `kill -INT` to a background job.
+
 ### Definition of done
 
 - All four tier 1 rules running in shadow against live traffic
