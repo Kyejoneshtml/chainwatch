@@ -129,6 +129,35 @@ def find_input_side_candidates(ch, address, since_dt):
     return by_txid
 
 
+def find_receiving_txids(ch, address, since_dt):
+    """Transactions where `address` received an output (direction='out'),
+    with first sighting after since_dt. Returns {txid: first_seen_dt}.
+
+    Deduped in Python, not via a SQL DISTINCT, for the same reason as
+    find_input_side_candidates: the pending-arrival and post-confirmation
+    duplicate rows for the same output can carry different seen_at, and
+    only the earliest matters here. No value/position tracking -- unlike
+    find_input_side_candidates, callers of this one (fan_in_consolidation.py)
+    only need to know a receiving transaction happened and when it was
+    first seen, not how much or at which position.
+    """
+    address = validated_address(address)
+    rows = ch.select(f"""
+        SELECT txid, seen_at
+        FROM flows
+        WHERE direction = 'out'
+          AND address = '{address}'
+          AND seen_at > toDateTime64('{dt_str(since_dt)}', 3)
+    """)
+    first_seen = {}
+    for r in rows:
+        txid = r["txid"]
+        seen = parse_ch_datetime(r["seen_at"])
+        if txid not in first_seen or seen < first_seen[txid]:
+            first_seen[txid] = seen
+    return first_seen
+
+
 def already_alerted(ch, rule, watch_id, txids):
     """(watch_id, txid) pairs already alerted for this specific rule --
     makes reprocessing the same candidates across runs safe."""

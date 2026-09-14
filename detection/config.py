@@ -56,3 +56,8 @@ DETECTION_INTERVAL_SECONDS = int(os.environ.get("DETECTION_INTERVAL_SECONDS", "1
 # this codebase uses -- no floats anywhere past this comment.
 RESIDUAL_THRESHOLD_SATS = int(os.environ.get("RESIDUAL_THRESHOLD_SATS", "10000"))
 REQUIRE_NO_CHANGE = os.environ.get("REQUIRE_NO_CHANGE", "true").strip().lower() not in ("false", "0", "")
+
+# Rule 3 (fan-in consolidation), docs/06-detection.md defaults. Global, not
+# per-watch, same reasoning as rule 2's thresholds above.
+FAN_IN_MIN_SOURCES = int(os.environ.get("FAN_IN_MIN_SOURCES", "10"))
+FAN_IN_WINDOW_SECONDS = int(os.environ.get("FAN_IN_WINDOW_SECONDS", str(60 * 60)))  # 1 hour
