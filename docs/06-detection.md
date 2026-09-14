@@ -103,6 +103,8 @@ Funds move from a watched address. Fires on mempool arrival.
 
 Severity: high. False positives: none by definition. A minimum value threshold handles noise from active wallets.
 
+**Type: observation.** The watched address either appears as a transaction input or it does not; nothing is inferred. No confidence figure applies — see Confidence derivation, "Observation rules vs inference rules."
+
 ### 2. Wallet drain
 
 The pattern the product exists to catch.
@@ -271,6 +273,18 @@ This gap was identified during report design: a summary page asserted 78% confid
 ### The rule
 
 **Every confidence figure is computed from the error rates of the heuristics that produced the inference, and from nothing else.** No figure is entered by hand, estimated, or chosen because it looks plausible.
+
+### Observation rules vs inference rules
+
+This distinction belongs to the rule, decided once where the rule is defined, not re-decided per alert.
+
+**An observation rule reports a fact read directly from the chain.** Watchlist movement (rule 1) is one: the watched address either appears as a transaction input or it does not. There is no heuristic between the chain data and the alert, and therefore no error rate to compute a confidence figure from. Observation rules carry **no confidence figure**. In storage, `confidence` is set to `0` — not because the observation is 0% confident, but because 0 is the only representable value in a non-nullable `UInt8` column that isn't itself a claimed figure on the 0–100 scale, and because code that naively averages or ranges over `confidence` should fail obviously, by producing a visibly wrong low number, rather than subtly, by silently treating an out-of-band sentinel as real data. The reason for the absence travels with the alert in `detail`, not in a comment somewhere the alert's own data can drift away from.
+
+**An inference rule attributes meaning beyond what is directly recorded.** A rule that attributes an address to an exchange, or that a given output is change rather than payment, is inferring from a heuristic with a known — or, per "Heuristics without a published error rate" below, explicitly absent — error rate. Only inference rules carry a confidence figure, computed as the rest of this section specifies.
+
+A rule states which kind it is in its own definition in this document, and the code implementing it says so as well. A rule does not sometimes observe and sometimes infer depending on the transaction in front of it — that would make the distinction a per-alert judgment call rather than a property of the rule, which is exactly the ambiguity this section exists to close.
+
+This is a different claim from **Certain signals** below, which lists specific determinations that are certain even inside an otherwise heuristic report (self-send, a single directly observed fact). A rule can be wholly observational — rule 1 is — while a report assembled from several rules mixes fact and inference throughout. The distinction here is a property of what an individual *rule* produces; "Certain signals" is about individual sentences inside a report that may combine many rules.
 
 ### Base rates
 
