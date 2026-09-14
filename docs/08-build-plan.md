@@ -158,6 +158,29 @@ Any future reading of a low combined rate should check `pending_rate` before tre
 
 Tier 2 and tier 3 rules deferred. Behavioural profile shift and velocity anomaly require 30 days of history and run in shadow during that period. Peel chain requires the graph. Fan-out and labelled-address proximity require data not available.
 
+### Catch-up message loss: investigated, not present at tested scale
+
+Before starting on 4b, a concern raised after 4a's watchlist matcher work needed resolving: `confirm.catch_up_to_tip` (used by both the ordinary `'C'` handler and reorg reprocessing) blocks the main loop synchronously while it walks forward through a backlog of blocks. While it runs, nothing calls `zmq_listener.listen()`'s `poller.poll()`, so the ingestor's own ZMQ subscriber socket sits undrained for the whole call. `getzmqnotifications` reports bitcoind's publisher high-water mark at 1,000 messages per topic; a long-stopped-then-restarted ingestor catching up over hundreds of blocks could plausibly exceed that and lose mempool notifications permanently, which is exactly the silent-failure shape `04-ingestion.md`'s governing principle rules out.
+
+**First attempt at measuring this was itself flawed, and is recorded here rather than quietly replaced.** It compared periodic snapshot counts from two independently-running processes: the ingestor's own `[tx] source=sequence` log-line count against a separate always-draining counter process. The gap between them fluctuated across samples (readings in roughly the 59–98 range, non-monotonic) rather than settling on a fixed number. That fluctuation is itself the tell that this approach measures the wrong thing: comparing two processes sampled at different, uncontrolled instants conflates *loss* (permanent, at the socket) with *backlog* (temporary, in the ingestor's own decode/resolve/flush pipeline after `catch_up_to_tip` returns) — a real drop cannot shrink on a later sample, but a backlog does. This method could not distinguish the two and was abandoned rather than trusted.
+
+**Second design isolates the actual question.** A second ZMQ subscriber, opened alongside the ingestor's own, is deliberately left completely undrained for the entire duration of a real (unmodified) `confirm.catch_up_to_tip` call against a deliberately stale checkpoint — reproducing the exact condition under test. A third, always-draining subscriber records every `'A'` (added-to-mempool) txid to a file in real time as independent ground truth for the same window. After `catch_up_to_tip` returns, the deliberately-idle socket is drained once and the two txid *sets* (not counts) are compared — removing all sampling-time noise.
+
+Run four times total, at the same scale (500 blocks, ~380–410s blocked, comparable mempool volume each time so no run measured a materially different load):
+
+| Run | Blocked duration | Blocks | Published (ground truth) | Received (idle socket, drained after) | Missing |
+|---|---|---|---|---|---|
+| 1 | 380.1s | 500 | 1,940 | 1,949 | **0** |
+| 2 | 410.8s | 500 | 1,799 | 1,806 | **0** |
+| 3 | 397.7s | 500 | 2,130 | 2,140 | **0** |
+| 4 | 404.4s | 500 | 1,764 | 1,765 | **0** |
+
+Zero messages lost, in every run. (Received exceeds published in each case because the idle socket's drain window extends slightly past the ground-truth window's end — expected, not a discrepancy.) Working theory: ZMQ's stated high-water mark governs internal queue depth, but each `sequence` message is roughly 43 bytes, so even ~2,000 of them sit well within an ordinary OS socket receive buffer — the backpressure condition the HWM exists to catch apparently never triggers at this volume.
+
+**Scope of this finding: 500 blocks, not a multi-week gap.** This measurement covers the catch-up shape actually observed in this project's own restart pattern (hours to low thousands of blocks). It has not been tested at 10x this scale or beyond, and the reasoning above (bytes, not message count, is the binding constraint) is inference from these four runs, not independently verified at a larger scale.
+
+**Decision: periodic mempool reconciliation, specified in `04-ingestion.md` as the general-purpose recovery mechanism for exactly this failure mode, is deliberately not built.** It remains the documented fallback if this finding is ever contradicted — by a much larger catch-up gap, a slower node, or a busier mempool — but building it now would be solving a problem this measurement did not find.
+
 ### Definition of done
 
 - All four tier 1 rules running in shadow against live traffic
