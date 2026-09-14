@@ -25,50 +25,19 @@ Every alert this rule writes has is_shadow = 1. Nothing is delivered.
 """
 import argparse
 import json
-import re
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 
+import common
 import config
 from ch_client import CHClient
 
 RULE_NAME = "watchlist_movement"
 SEVERITY = "high"
+CHECKPOINT_COMPONENT = "detector"  # unchanged from before the common.py
+# extraction -- do not rename; live checkpoint rows already use this value.
 NOT_AN_INFERENCE = 0  # see module docstring and docs/06-detection.md
-
-ALERT_TXID_CHUNK = 1000  # same defensive chunk size as ingestor/confirm.py's
-# KNOWN_TXIDS_CHUNK, for the same reason: ClickHouse's max_query_size is a
-# hard SQL-parser limit on a single IN (...) clause, independent of table size.
-
-_ADDRESS_RE = re.compile(r"^[a-zA-Z0-9]{20,90}$")  # same shape as
-# ingestor/watchlist_cli.py's validator -- duplicated, not imported, for the
-# same decoupling reason as ch_client.py and config.py.
-_TXID_RE = re.compile(r"^[0-9a-f]{64}$")
-
-
-def _validated_address(address):
-    if not _ADDRESS_RE.match(address):
-        raise ValueError(f"'{address}' doesn't look like a Bitcoin address")
-    return address
-
-
-def now_dt():
-    return datetime.now(timezone.utc)
-
-
-def dt_str(dt):
-    # Same DateTime64(3) string shape ingestor/persist.py's now_str() uses --
-    # a bare JSON float is rejected by ClickHouse's JSONEachRow parser.
-    return dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-
-
-def parse_ch_datetime(s):
-    # ClickHouse returns DateTime64(3) values as "YYYY-MM-DD HH:MM:SS.mmm"
-    # strings under JSONEachRow -- the same format dt_str() produces, so
-    # round-tripping through here is exact.
-    return datetime.strptime(s, "%Y-%m-%d %H:%M:%S.%f").replace(tzinfo=timezone.utc)
 
 
 @dataclass
@@ -92,93 +61,6 @@ class Stats:
             "skipped_below_threshold": self.skipped_below_threshold,
             "db_errors": self.db_errors,
         }
-
-
-def load_watchlist(ch):
-    rows = ch.select("""
-        SELECT address, watch_id, min_value, created_at
-        FROM watchlist FINAL
-        WHERE active = 1
-    """)
-    for r in rows:
-        r["created_at"] = parse_ch_datetime(r["created_at"])
-    return rows
-
-
-def read_detector_watermark(ch):
-    rows = ch.select("""
-        SELECT last_run_at FROM checkpoints
-        WHERE component = 'detector'
-        ORDER BY last_run_at DESC LIMIT 1 BY component
-    """)
-    return parse_ch_datetime(rows[0]["last_run_at"]) if rows else None
-
-
-def write_detector_checkpoint(ch, run_started_at):
-    # last_block_hash/last_block_height are unused by this component --
-    # '' and 0 are the same "not applicable" sentinels the schema already
-    # uses elsewhere (e.g. transactions.block_hash while pending).
-    ch.insert_rows("checkpoints", [{
-        "component": "detector",
-        "last_block_hash": "",
-        "last_block_height": 0,
-        "last_run_at": dt_str(run_started_at),
-    }])
-
-
-def find_candidates(ch, address, since_dt):
-    """Transactions where `address` is an input (spending) with a first
-    sighting after since_dt. DISTINCT on (txid, position, value) collapses
-    the pending-arrival and post-confirmation duplicate flow rows for the
-    same input -- same value, different block_height/seen_at, neither of
-    which is selected here.
-    """
-    address = _validated_address(address)
-    rows = ch.select(f"""
-        SELECT DISTINCT txid, position, value
-        FROM flows
-        WHERE direction = 'in'
-          AND address = '{address}'
-          AND seen_at > toDateTime64('{dt_str(since_dt)}', 3)
-        ORDER BY txid
-    """)
-    by_txid = {}
-    for r in rows:
-        entry = by_txid.setdefault(r["txid"], {"value": 0, "positions": []})
-        entry["value"] += int(r["value"])
-        entry["positions"].append(r["position"])
-    return by_txid
-
-
-def already_alerted(ch, watch_id, txids):
-    """(watch_id, txid) pairs already alerted for this rule -- makes
-    reprocessing the same candidates across runs safe."""
-    if not txids:
-        return set()
-    bad = [t for t in txids if not _TXID_RE.match(t)]
-    if bad:
-        raise ValueError(f"txid did not match expected 64-char hex format: {bad[:3]}")
-
-    seen = set()
-    txids = list(txids)
-    for i in range(0, len(txids), ALERT_TXID_CHUNK):
-        chunk = txids[i:i + ALERT_TXID_CHUNK]
-        id_list = ",".join(f"'{t}'" for t in chunk)
-        rows = ch.select(f"""
-            SELECT DISTINCT txid FROM alerts
-            WHERE rule = '{RULE_NAME}' AND watch_id = '{watch_id}' AND txid IN ({id_list})
-        """)
-        seen.update(r["txid"] for r in rows)
-    return seen
-
-
-def transaction_status(ch, txid):
-    if not _TXID_RE.match(txid):
-        raise ValueError(f"txid did not match expected 64-char hex format: {txid}")
-    rows = ch.select(f"""
-        SELECT status, block_hash FROM transactions FINAL WHERE txid = '{txid}'
-    """)
-    return (rows[0]["status"], rows[0]["block_hash"]) if rows else ("pending", "")
 
 
 def build_alert(watch, txid, entry, status, block_hash):
@@ -206,45 +88,46 @@ def build_alert(watch, txid, entry, status, block_hash):
         "detail": json.dumps(detail),
         "confidence": NOT_AN_INFERENCE,
         "is_shadow": 1,
-        "created_at": dt_str(now_dt()),
+        "created_at": common.dt_str(common.now_dt()),
         "acknowledged": 0,
         "invalidated": 0,
     }
 
 
 def run_once(ch, stats):
-    run_started_at = now_dt()  # captured before querying -- see module docs
-    # on the checkpoint race: the NEXT run's watermark must be THIS run's
-    # start time, not its completion time, or a row landing mid-run could
-    # be silently skipped forever rather than merely re-scanned once (safe,
-    # since (watch_id, txid) dedup makes re-scanning idempotent).
+    run_started_at = common.now_dt()  # captured before querying -- see
+    # module docs on the checkpoint race: the NEXT run's watermark must be
+    # THIS run's start time, not its completion time, or a row landing
+    # mid-run could be silently skipped forever rather than merely
+    # re-scanned once (safe, since (watch_id, txid) dedup makes
+    # re-scanning idempotent).
 
-    watches = load_watchlist(ch)
-    global_watermark = read_detector_watermark(ch)
+    watches = common.load_watchlist(ch)
+    global_watermark = common.read_checkpoint(ch, CHECKPOINT_COMPONENT)
 
     alert_batch = []
     for watch in watches:
         effective_start = max(global_watermark, watch["created_at"]) if global_watermark else watch["created_at"]
-        candidates = find_candidates(ch, watch["address"], effective_start)
+        candidates = common.find_input_side_candidates(ch, watch["address"], effective_start)
         stats.candidates_evaluated += len(candidates)
         if not candidates:
             continue
 
-        already = already_alerted(ch, watch["watch_id"], list(candidates.keys()))
+        already = common.already_alerted(ch, RULE_NAME, watch["watch_id"], list(candidates.keys()))
         for txid, entry in candidates.items():
             if txid in already:
                 continue
             if entry["value"] < watch["min_value"]:
                 stats.skipped_below_threshold += 1
                 continue
-            status, block_hash = transaction_status(ch, txid)
+            status, block_hash = common.transaction_status(ch, txid)
             alert_batch.append(build_alert(watch, txid, entry, status, block_hash))
 
     if alert_batch:
         ch.insert_rows("alerts", alert_batch)
         stats.alerts_written += len(alert_batch)
 
-    write_detector_checkpoint(ch, run_started_at)
+    common.write_checkpoint(ch, CHECKPOINT_COMPONENT, run_started_at)
     stats.runs += 1
     print(
         f"[detector] run complete: watches={len(watches)} "

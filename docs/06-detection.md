@@ -120,6 +120,14 @@ The absence of change is the strongest component. Legitimate spending almost alw
 
 False positives: moderate. Wallet migrations and hardware wallet upgrades look identical. Both are relatively rare.
 
+**Type: inference.** Unlike rule 1, this rule carries a confidence figure. The absence of change is not read directly off the chain — it is inferred, and the inference depends on the one-time-change heuristic's own assumption (change goes to a fresh address the sender controls), which cannot be independently verified without address clustering. Confidence is computed once, from that heuristic's published error rate alone, and is identical on every alert this rule writes — see Confidence derivation, "Observation rules vs inference rules."
+
+**Implementation carries two structural limitations, stated here rather than left inside a query:**
+
+**No-change checking is narrower than "the sender's cluster."** This codebase has no address-clustering system (that is Neo4j, deferred to phase 5's benchmark), so "no change output returning to the sender" is checked as "no output returning to the exact watched address" — nothing broader. Legitimate spending that sends change to a *fresh* address the same wallet also controls — the normal, privacy-conscious behaviour the one-time-change heuristic's own name describes — looks identical to a real drain under this check. This is not a bug; it is the mechanism behind the moderate false-positive rate this section already predicts, now attributable to a specific cause rather than left general.
+
+**"Every available UTXO consumed" is checked as a balance, not a UTXO set, and the balance only covers what this project has itself observed.** There is no capability anywhere in this system to enumerate an address's actual UTXO set — a pruned node with no `txindex` cannot answer that query at all (`04-ingestion.md`). What the rule actually computes is: total ever received minus total ever spent, as recorded in this project's own ingested data for that address, before and after the candidate transaction. If that balance drops from something meaningful to near zero in one transaction, the rule fires. **This is not the same claim as "every UTXO was consumed."** An address funded before this project started watching it may hold real, unspent value in outputs this system has never seen and has no way to discover — the balance computation would never include them, so it cannot reveal the gap. A transaction that looks like a complete drain against everything this system knows about could leave money behind in a UTXO outside its observation window, and nothing in this rule's output would show the difference between those two cases. See "What this report does not claim," below, and the `observation_window_seconds` field this rule attaches to every alert — it names how long the address had been observed before the transaction, so a reviewer can weigh the limitation rather than just being warned about it.
+
 ### 3. Fan-in consolidation
 
 Many addresses paying one. Frequently precedes an exchange deposit, the point at which funds exit to fiat.
@@ -361,3 +369,13 @@ Thresholds are reviewed against recent case data at least quarterly. Every chang
 3. **Shadow mode measurement.** The primary method. Live traffic, silent recording, manual classification, measured false positive rate before enabling
 
 A stated false positive rate, even an unflattering one, is the difference between a tested detection system and a plausible-looking one.
+
+---
+
+## What this report does not claim
+
+Not created until phase 4c, and created because a claimed limitation turned out, on being asked to point to it, not to exist yet. Stated plainly here instead, the same way an unverified figure is corrected rather than quietly carried forward.
+
+**Analysis covers transactions observed since monitoring began. Holdings that arrived before that are not visible to this system.** Not partially, not approximately — simply not visible, since there is no capability to enumerate an address's historical UTXO set on a pruned node without `txindex` (`04-ingestion.md`). This is at its most consequential for the exact case this product exists to serve: a victim who adds a watched address only after discovering a theft has, by construction, a system that never saw the funds arrive. Rule 2 (wallet drain) is the rule most affected, since its entire signature depends on knowing what was there beforehand — see its entry above.
+
+**Some confirmed transactions were never visible in this node's own public mempool before the block that confirmed them, delaying detection for them by up to one block interval.** Measured live against mainnet — see `08-build-plan.md`, phase 4c, for the date, the sample size, and the figure; a percentage is not repeated here without both, since a figure with no sample size attached is the thing this section exists to avoid. Such transactions are invisible to any mempool-arrival-triggered rule, including rule 1, until the block containing them confirms. Private submission has legitimate uses — some mining pools and relay services accept transactions directly — so its presence alone is not suspicious. The point recorded here is only that anyone deliberately avoiding public broadcast, which describes ordinary private relay use exactly as well as it describes someone laundering funds, gets a detection delay this system would otherwise leave undisclosed.
