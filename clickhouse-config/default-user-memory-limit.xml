@@ -1,0 +1,22 @@
+<!--
+  Wired in via docker-compose.yml's clickhouse service volumes:
+      ./clickhouse-config/default-user-memory-limit.xml:/etc/clickhouse-server/users.d/default-user-memory-limit.xml:ro
+
+  Per query cap for the default user: the one the ingestor user's own cap
+  (already applied via SQL, schema/ingestor-query-memory-cap.sql.example)
+  does not cover, and the one the query that caused the 2026-09-14 OOM
+  actually ran as. Mounted under users.d/ rather than config.d/, since
+  profiles/users/quotas are read from the separate users_config
+  (users.xml) tree, not the main config.xml tree; see memory-limits.xml
+  for why the first attempt at this, placed in config.d/, had no effect.
+
+  See docs/08-build-plan.md's OOM section for the arithmetic behind the
+  value below.
+-->
+<clickhouse>
+    <profiles>
+        <default>
+            <max_memory_usage>1000000000</max_memory_usage>
+        </default>
+    </profiles>
+</clickhouse>

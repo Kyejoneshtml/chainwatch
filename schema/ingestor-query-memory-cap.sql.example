@@ -1,0 +1,38 @@
+-- Per-query memory cap for the 'ingestor' ClickHouse user, covering both
+-- the ingestor process and every detection/ job (they share this user --
+-- see detection/config.py's own comment on why). Same category of change
+-- as ingestor-user.sql.example: live instance state, stored under
+-- /var/lib/clickhouse/access/ inside the clickhouse-data volume, so it
+-- survives a plain container restart or recreate but is lost if that
+-- volume is ever removed or recreated. If that happens, re-run this file
+-- after re-running ingestor-user.sql.example.
+--
+-- Why this exists: 2026-09-14's ClickHouse OOM (docs/08-build-plan.md,
+-- phase 4) was caused by an unbounded ad hoc query run with no per-query
+-- limit -- max_memory_usage was 0 (unlimited) for every user, so a single
+-- query could consume up to the whole server budget. This caps the
+-- automated path. It does NOT cap the 'default' user, which is
+-- XML-managed (/etc/clickhouse-server/users.d/default-user.xml, per
+-- ingestor-user.sql.example's own note) and therefore read-only from SQL --
+-- confirmed live: `ALTER USER default SETTINGS ...` fails with
+-- ACCESS_STORAGE_READONLY. Capping 'default', and the server-wide
+-- max_server_memory_usage ceiling, both require a docker-compose.yml
+-- change (a mounted config.d override) -- proposed, not applied, in
+-- docs/08-build-plan.md.
+--
+-- 1,000,000,000 bytes (~0.93 GiB): comfortably above any real query this
+-- codebase runs today (every production query is address- or txid-scoped;
+-- see docs/08-build-plan.md's OOM section for the per-query survey), and
+-- comfortably below whatever the eventual server-wide ceiling turns out to
+-- be, so a single runaway query fails on its own limit well before it
+-- could threaten the server budget.
+--
+-- Proven 2026-09-22: the exact query shape that caused the OOM, rerun as
+-- 'ingestor' with no query-level SETTINGS clause (relying purely on this
+-- persisted user setting), failed cleanly:
+--   Code: 241. DB::Exception: Query memory limit exceeded: would use
+--   1.10 GiB (attempt to allocate chunk of 254.52 MiB bytes),
+--   maximum: 953.67 MiB. (MEMORY_LIMIT_EXCEEDED)
+-- No crash, no restart, nothing else affected.
+
+ALTER USER ingestor SETTINGS max_memory_usage = 1000000000;

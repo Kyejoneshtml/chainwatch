@@ -24,6 +24,8 @@ services:
     volumes:
       - clickhouse-data:/var/lib/clickhouse
       - ./schema:/docker-entrypoint-initdb.d:ro
+      - ./clickhouse-config/memory-limits.xml:/etc/clickhouse-server/config.d/memory-limits.xml:ro
+      - ./clickhouse-config/default-user-memory-limit.xml:/etc/clickhouse-server/users.d/default-user-memory-limit.xml:ro
 
 volumes:
   bitcoin-data:

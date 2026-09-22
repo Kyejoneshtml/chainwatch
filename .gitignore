@@ -1,6 +1,12 @@
 bitcoin.conf
 .DS_Store
 
+# Address strings and per-address watchlist reasoning. Real mainnet
+# addresses, kept out of the repo per docs/01-thesis.md's no-attribution/
+# no-public-labelling position -- docs/08-build-plan.md gets the selection
+# method and categories only, never the addresses themselves.
+watchlist.local.md
+
 # Local development only. Publishes bitcoind RPC and ZMQ to 127.0.0.1 so the
 # ingestor can run on the host. Machine-specific; see docker-compose.override.yml.example
 docker-compose.override.yml

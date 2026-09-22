@@ -1,0 +1,23 @@
+<!--
+  Wired in via docker-compose.yml's clickhouse service volumes:
+      ./clickhouse-config/memory-limits.xml:/etc/clickhouse-server/config.d/memory-limits.xml:ro
+
+  Server wide setting only. The per query cap for the default user lives
+  in default-user-memory-limit.xml instead, mounted under users.d/ rather
+  than config.d/: config.d/*.xml merges only into the tree read from
+  config.xml, and profiles/users/quotas are read from the separate
+  users_config (users.xml) tree via users.d/*.xml, even though both files
+  share the same clickhouse root tag. Confirmed by testing: a profiles
+  block placed here had no effect on an actual default user session.
+
+  See docs/08-build-plan.md's OOM section for the arithmetic behind the
+  value below.
+-->
+<clickhouse>
+    <!-- VM total 7.75 GiB, minus bitcoind's worst case budget (dbcache
+         plus maxmempool plus overhead, plus btc1/btc2's regtest defaults),
+         minus a small reserve for the Docker Desktop VM's own overhead.
+         About 2.03 GiB by that arithmetic; rounded down slightly for
+         margin. -->
+    <max_server_memory_usage>2000000000</max_server_memory_usage>
+</clickhouse>

@@ -55,9 +55,29 @@ def build_transaction_row(summary, vsize, seen_at, status="pending",
     }
 
 
-def build_flow_rows(summary, seen_at, block_height=0, block_hash="", block_time=EPOCH):
+def build_flow_rows(summary, seen_at, include_unresolved_inputs=True):
+    """docs/08-build-plan.md, flows redesign: block_height/block_hash/
+    block_time are gone -- confirmation status comes from `transactions
+    FINAL` (common.transaction_status in detection/), never from flows,
+    confirmed by grepping every consumer before removing them.
+
+    include_unresolved_inputs=False (used by Persistence.add(), the
+    mempool path) skips writing a row at all for an input still in
+    parent_pending or unresolved state, rather than writing a placeholder
+    with address='' -- flows.address is now part of the table's dedup
+    identity (schema/08_flows_redesign.sql), and an input's address must
+    never change after its first write or ReplacingMergeTree can never
+    merge the two versions. The row gets written once, correctly, no
+    earlier than resolution -- at the latest by Persistence.add_confirmed()
+    (the confirm path), called with the default True, since
+    resolve_confirmed_input succeeds in every case except the pruned
+    node's undo-data window being exceeded, a genuine terminal state with
+    no later opportunity to fix it.
+    """
     rows = []
     for position, inp in enumerate(summary["inputs"]):
+        if not include_unresolved_inputs and inp["state"] != "resolved":
+            continue
         rows.append({
             "txid": summary["txid"],
             "direction": "in",
@@ -65,9 +85,6 @@ def build_flow_rows(summary, seen_at, block_height=0, block_hash="", block_time=
             "address": inp["address"] or "",
             "value": inp["value"] if inp["value"] is not None else 0,
             "address_type": inp["script_type"] or "",
-            "block_height": block_height,
-            "block_hash": block_hash,
-            "block_time": block_time,
             "seen_at": seen_at,
             "is_change": 0,
             "change_confidence": 0,
@@ -82,15 +99,13 @@ def build_flow_rows(summary, seen_at, block_height=0, block_hash="", block_time=
             "address": out["address"] or "",
             "value": out["value"],
             "address_type": out["script_type"] or "",
-            "block_height": block_height,
-            "block_hash": block_hash,
-            "block_time": block_time,
             "seen_at": seen_at,
             "is_change": 0,
             "change_confidence": 0,
             "is_dust": 0,  # dust flagging is inputs-only scope (stage 2)
             "resolution_state": "resolved",  # outputs are decoded directly
-            # from the transaction body, not looked up -- always fully known
+            # from the transaction body, not looked up -- always fully known,
+            # and their address never changes after first write either
         })
     return rows
 
@@ -118,7 +133,10 @@ class Persistence:
     def add(self, summary, vsize):
         seen_at = now_str()
         self.tx_buffer.append(build_transaction_row(summary, vsize, seen_at))
-        self.flow_buffer.extend(build_flow_rows(summary, seen_at))
+        # include_unresolved_inputs=False: the mempool path is exactly where
+        # parent_pending/unresolved inputs arise (docs/08-build-plan.md,
+        # flows redesign) -- see build_flow_rows's own docstring for why.
+        self.flow_buffer.extend(build_flow_rows(summary, seen_at, include_unresolved_inputs=False))
 
     def add_confirmed(self, summary, vsize, block_height, block_hash, block_time):
         seen_at = now_str()
@@ -126,10 +144,14 @@ class Persistence:
             summary, vsize, seen_at, status="confirmed",
             block_height=block_height, block_hash=block_hash, block_time=block_time,
         ))
-        self.flow_buffer.extend(build_flow_rows(
-            summary, seen_at,
-            block_height=block_height, block_hash=block_hash, block_time=block_time,
-        ))
+        # block_height/hash/time still go to `transactions` above (the
+        # authoritative source detection/ already reads confirmation status
+        # from) but no longer to flows -- see build_flow_rows. Default
+        # include_unresolved_inputs=True: the confirm path always resolves
+        # (getblock verbosity 3 embeds prevout) except the rare pruned-undo-
+        # window case, which is a genuine terminal state worth recording,
+        # not a placeholder to defer.
+        self.flow_buffer.extend(build_flow_rows(summary, seen_at))
 
     def mark_block_confirmed(self, height, block_hash):
         self.last_block_height = height
@@ -222,6 +244,26 @@ def count_duplicate_transactions(ch):
         SELECT txid, count() AS n
         FROM transactions FINAL
         GROUP BY txid
+        HAVING n > 1
+        LIMIT 10
+    """)
+    return len(rows)
+
+
+def count_duplicate_flows(ch):
+    # Keyed on (txid, direction, position) -- flows' true semantic identity
+    # -- deliberately NOT flows' own ORDER BY (address, direction, position,
+    # txid). Checking against the storage key would be exactly as vacuous
+    # as count_duplicate_transactions checking `transactions FINAL` grouped
+    # by txid: ReplacingMergeTree enforces uniqueness on its ORDER BY by
+    # construction, so that query could never find anything regardless of
+    # whether the design actually works. This checks the real invariant --
+    # exactly one row per input/output slot -- independent of how the table
+    # happens to be physically ordered for reads.
+    rows = ch.select("""
+        SELECT txid, direction, position, count() AS n
+        FROM flows FINAL
+        GROUP BY txid, direction, position
         HAVING n > 1
         LIMIT 10
     """)

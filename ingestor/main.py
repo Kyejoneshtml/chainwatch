@@ -34,6 +34,7 @@ class Stats:
     batches_flushed: int = 0
     insert_failures: int = 0
     duplicate_count: int = 0
+    duplicate_flows_count: int = 0
     blocks_processed: int = 0
     tx_confirmed: int = 0
     tx_confirmed_new: int = 0  # confirmed but never seen pending -- a signal
@@ -68,6 +69,7 @@ class Stats:
             "batches_flushed": self.batches_flushed,
             "insert_failures": self.insert_failures,
             "duplicate_count": self.duplicate_count,
+            "duplicate_flows_count": self.duplicate_flows_count,
             "blocks_processed": self.blocks_processed,
             "tx_confirmed": self.tx_confirmed,
             "tx_confirmed_new": self.tx_confirmed_new,
@@ -212,6 +214,7 @@ def main():
     finally:
         persistence.flush()
         stats.duplicate_count = persist.count_duplicate_transactions(ch)
+        stats.duplicate_flows_count = persist.count_duplicate_flows(ch)
         print(f"[main] shutdown: {stats.summary()}")
 
 
