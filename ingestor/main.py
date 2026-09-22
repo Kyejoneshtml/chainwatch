@@ -6,6 +6,7 @@ import confirm
 import decode
 import persist
 import reorg
+import schema_check
 import watchlist
 import zmq_listener
 from ch_client import CHClient
@@ -119,6 +120,15 @@ def process_and_log(rpc, txid, source, stats, persistence, matcher):
 def main():
     rpc = RPCClient()
     ch = CHClient()
+
+    # Refuses to run against a flows table that doesn't match what this
+    # code writes -- verified live (ingestor/schema_check.py) that a
+    # mismatch would not fail the insert, it would silently corrupt
+    # block_height/block_hash/block_time to the project's own "pending"
+    # sentinel on every row, confirmed transactions included. Before any
+    # RPC/ZMQ setup or checkpoint read, so a mismatch is caught before
+    # anything else happens, not just before the first write.
+    schema_check.verify_flows_schema(ch)
 
     info = rpc.getblockchaininfo()
     print(f"[main] RPC connected: chain={info['chain']} blocks={info['blocks']}")
