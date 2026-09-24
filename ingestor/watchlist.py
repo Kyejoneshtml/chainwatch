@@ -18,8 +18,7 @@ class WatchlistMatcher:
     'A' event) and the confirmed-block path (confirm.py) -- "every
     transaction" per docs/02-architecture.md, not just mempool arrivals,
     since a mempool-only check would silently miss transactions that first
-    appear directly in a block (the same coverage gap tx_confirmed_new
-    already tracks elsewhere).
+    appear directly in a block.
     """
 
     def __init__(self, ch, refresh_seconds=None):

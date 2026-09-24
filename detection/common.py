@@ -10,9 +10,11 @@ import re
 import time
 from datetime import datetime, timezone
 
-ALERT_TXID_CHUNK = 1000  # same defensive chunk size as ingestor/confirm.py's
-# KNOWN_TXIDS_CHUNK, for the same reason: ClickHouse's max_query_size is a
-# hard SQL-parser limit on a single IN (...) clause, independent of table size.
+ALERT_TXID_CHUNK = 1000  # ClickHouse's max_query_size is a hard SQL-parser
+# limit on a single IN (...) clause, independent of table size (see
+# ingestor/ch_client.py's _execute for the measured ~100KB failure point) --
+# chunking keeps each query safely under it regardless of how many
+# candidates a run produces.
 
 _ADDRESS_RE = re.compile(r"^[a-zA-Z0-9]{20,90}$")  # same shape as
 # ingestor/watchlist_cli.py's validator -- duplicated there, not imported,

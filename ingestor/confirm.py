@@ -1,25 +1,12 @@
-import re
 import time
 
 import decode
 import persist
 
-_TXID_RE = re.compile(r"^[0-9a-f]{64}$")
-
 SLOW_BLOCK_SECONDS = 5.0  # docs/04-ingestion.md: falling behind on the
 # mempool subscriber isn't just latency, it's lost input resolution -- so
 # block processing time is measured, not assumed, and a slow block is
 # surfaced rather than only visible in hindsight.
-
-# ClickHouse's max_query_size defaults to 262144 bytes -- a hard SQL-parser
-# limit independent of the URL-vs-body transport issue fixed in ch_client.py.
-# A single IN (...) clause over a whole block's txids hits it on any block
-# above roughly 3,900 transactions (each quoted txid is ~67 bytes), and
-# current mainnet blocks routinely run 3,000-4,000+. Verified against the
-# live node: block 965636 (4,456 tx) failed with "Max query size exceeded"
-# at exactly this shape of query. Chunking keeps each query safely under the
-# limit regardless of block size.
-KNOWN_TXIDS_CHUNK = 1000
 
 
 def resolve_confirmed_input(vin):
@@ -82,37 +69,9 @@ def process_confirmed_transaction(tx):
     }
 
 
-def known_txids(ch, txids):
-    """Which of these txids already have at least one row in `transactions`
-    (any status) -- splits a block's confirmations into "already seen
-    pending" vs "never seen", the count docs/04-ingestion.md asks to be kept
-    separate as a signal about mempool subscriber coverage.
-
-    Existence only, not a status read -- FINAL's dedup-at-read-time concern
-    (docs/05-data-models.md) doesn't apply: an un-merged duplicate can't make
-    a present txid disappear from this check.
-    """
-    if not txids:
-        return set()
-    bad = [t for t in txids if not _TXID_RE.match(t)]
-    if bad:
-        raise ValueError(f"txid did not match expected 64-char hex format: {bad[:3]}")
-
-    known = set()
-    for i in range(0, len(txids), KNOWN_TXIDS_CHUNK):
-        chunk = txids[i:i + KNOWN_TXIDS_CHUNK]
-        id_list = ",".join(f"'{t}'" for t in chunk)
-        rows = ch.select(f"SELECT DISTINCT txid FROM transactions WHERE txid IN ({id_list})")
-        known.update(r["txid"] for r in rows)
-    return known
-
-
 def process_block(rpc, ch, height, block_hash, persistence, stats, matcher):
     block = rpc.getblock(block_hash, 3)
     block_time = persist.block_time_str(block["time"])
-
-    txids = [tx["txid"] for tx in block["tx"]]
-    already_known = known_txids(ch, txids)
 
     for tx in block["tx"]:
         summary = process_confirmed_transaction(tx)
@@ -120,8 +79,6 @@ def process_block(rpc, ch, height, block_hash, persistence, stats, matcher):
         matcher.check(summary, "confirmed", stats)
 
         stats.tx_confirmed += 1
-        if tx["txid"] not in already_known:
-            stats.tx_confirmed_new += 1
 
         # A block is many multiples of the 1,000-row flush threshold; flush
         # mid-block rather than accumulating one oversized batch, and to
@@ -150,9 +107,10 @@ def _process_and_time(rpc, ch, height, block_hash, persistence, stats, matcher):
 MAX_BLOCKS_PER_CALL = 50  # docs/08-build-plan.md, first mainnet soak run:
 # a ~1,458-block backlog, walked with no bound at all, accumulated enough
 # small unmerged parts across flows/transactions (flushed every ~1,000
-# rows/2s) that a concurrent, unrelated query (known_txids's unanchored
-# `txid IN (...)` scan, not a FINAL lookup) hit the memory cap at block 41
-# of the burst and aborted the whole call -- and since catch_up_to_tip was
+# rows/2s) that a concurrent, unrelated query (this module's own known_txids,
+# since removed -- an unanchored `txid IN (...)` scan, not a FINAL lookup)
+# hit the memory cap at block 41 of the burst and aborted the whole call --
+# and since catch_up_to_tip was
 # only ever triggered by a live 'C' event or a detected reorg, nothing
 # retried it; it sat 1,418 blocks behind waiting on the next real mainnet
 # block, which could be ~10 minutes away. Bounding each call keeps a

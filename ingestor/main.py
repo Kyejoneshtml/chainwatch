@@ -38,8 +38,6 @@ class Stats:
     duplicate_flows_count: int = 0
     blocks_processed: int = 0
     tx_confirmed: int = 0
-    tx_confirmed_new: int = 0  # confirmed but never seen pending -- a signal
-    # about how much the mempool subscriber is missing, not a coverage bug
     max_block_seconds: float = 0.0
     reorgs_detected: int = 0
     tx_reverted: int = 0
@@ -73,7 +71,6 @@ class Stats:
             "duplicate_flows_count": self.duplicate_flows_count,
             "blocks_processed": self.blocks_processed,
             "tx_confirmed": self.tx_confirmed,
-            "tx_confirmed_new": self.tx_confirmed_new,
             "max_block_seconds": round(self.max_block_seconds, 2),
             "reorgs_detected": self.reorgs_detected,
             "tx_reverted": self.tx_reverted,

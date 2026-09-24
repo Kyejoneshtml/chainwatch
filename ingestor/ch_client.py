@@ -25,10 +25,10 @@ class CHClient:
             # not the `query` URL param -- verified directly against this
             # container: ClickHouse's HTTP form parser rejects a `query`
             # param past roughly 100KB with "Field value too long", and a
-            # multi-thousand-row IN (...) clause (see confirm.known_txids)
-            # crosses that easily. INSERT keeps `query` in the URL param
-            # below since the statement itself is always short there; only
-            # the row data needs the body.
+            # multi-thousand-row IN (...) clause (see detection/common.py's
+            # ALERT_TXID_CHUNK) crosses that easily. INSERT keeps `query` in
+            # the URL param below since the statement itself is always short
+            # there; only the row data needs the body.
             params = {"database": self._database}
             data = query
         else:
