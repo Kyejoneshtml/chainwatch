@@ -11,6 +11,20 @@ block_hash='', block_time=1970-01-01 -- which is exactly this project's own
 every row, including fully confirmed transactions. That is silent
 corruption, not a crash: the code has no other way to notice the mismatch
 on its own, which is why this check exists.
+
+Also refuses to start if any materialized view depends on flows that isn't
+explicitly expected here. Found by testing on regtest, not assumed: a
+materialized view resolves its source table by name at each push, not by a
+fixed reference captured when the view was created -- RENAME TABLE flows TO
+flows_old, flows_new TO flows leaves any MV still named as depending on
+"flows" pointed at the *new* table, not the renamed-away old one. Confirmed
+live against production immediately before address_stats_mv was dropped
+(schema/10_drop_address_stats_mv.sql): its stored query still referenced
+flows.block_time, so it would have started failing every insert into the
+redesigned flows the moment a future rename made it the live "flows" --
+the same flush-failure-forever shape already found once this session, this
+time against real traffic. EXPECTED_FLOWS_DEPENDENTS is empty because that
+MV is now dropped, not fixed -- see docs/08-build-plan.md for why.
 """
 
 # Exactly the columns persist.build_flow_rows produces today. Kept as an
@@ -22,6 +36,13 @@ EXPECTED_FLOWS_COLUMNS = {
     "seen_at", "is_change", "change_confidence", "is_dust", "resolution_state",
 }
 EXPECTED_FLOWS_ENGINE = "ReplacingMergeTree"
+
+# Materialized views (or anything else) allowed to depend on flows. Empty:
+# address_stats_mv, the only one that ever existed, is dropped
+# (schema/10_drop_address_stats_mv.sql), not fixed -- see this module's
+# docstring. Any future view attached here has to be added explicitly, the
+# same discipline EXPECTED_FLOWS_COLUMNS already applies to the writer.
+EXPECTED_FLOWS_DEPENDENTS = set()
 
 
 class SchemaMismatch(Exception):
@@ -61,4 +82,24 @@ def verify_flows_schema(ch):
             "block_height=0, block_hash='', block_time=1970-01-01 on every row, "
             "indistinguishable from this project's own 'pending' sentinel, on "
             "fully confirmed transactions too). Do not proceed."
+        )
+
+    dep_rows = ch.select("""
+        SELECT dependencies_table FROM system.tables
+        WHERE database = currentDatabase() AND name = 'flows'
+    """)
+    dependents = set(dep_rows[0]["dependencies_table"]) if dep_rows else set()
+    unexpected = dependents - EXPECTED_FLOWS_DEPENDENTS
+    if unexpected:
+        raise SchemaMismatch(
+            f"unexpected object(s) depending on flows: {sorted(unexpected)}. "
+            "A materialized view resolves its source by name at push time, not "
+            "a fixed reference -- if this ever holds a stale view expecting the "
+            "old columns (address_stats_mv did, until it was dropped rather "
+            "than fixed -- schema/10_drop_address_stats_mv.sql), every insert "
+            "into flows would silently succeed at the base table while the "
+            "view push fails, and this process would report every flush as "
+            "failed and retry forever without ever advancing its checkpoint. "
+            "Do not proceed until this is explained and EXPECTED_FLOWS_DEPENDENTS "
+            "is updated deliberately."
         )
