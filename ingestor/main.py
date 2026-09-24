@@ -99,6 +99,23 @@ def fee_display(summary):
     return summary["fee"]
 
 
+def run_catch_up(rpc, ch, persistence, stats, matcher, trigger):
+    """Shared by the 'C' event handler and the periodic retry timer, so
+    both report a bounded call the same way -- a call reached only through
+    the retry path previously logged nothing on bounding, which is exactly
+    what a first mainnet soak run's stalled catch-up needed visibility
+    into. Exceptions are the caller's own to handle (different stats
+    counters/messages at each call site already existed before this)."""
+    reached_tip = confirm.catch_up_to_tip(rpc, ch, persistence, stats, matcher)
+    if not reached_tip:
+        print(
+            f"[main] catch-up ({trigger}) bounded at height={persistence.last_block_height} "
+            f"(MAX_BLOCKS_PER_CALL={confirm.MAX_BLOCKS_PER_CALL}), more backlog "
+            "remains -- the periodic retry timer will continue it"
+        )
+    return reached_tip
+
+
 def process_and_log(rpc, txid, source, stats, persistence, matcher):
     tx = rpc.getrawtransaction(txid, verbose=True)
     summary = decode.process_transaction(rpc, tx)
@@ -155,6 +172,7 @@ def main():
         ch, stats, last_block_height=last_block_height, last_block_hash=last_block_hash,
     )
     last_reorg_check = time.monotonic()
+    last_catch_up_retry = time.monotonic()
 
     matcher = watchlist.WatchlistMatcher(ch, config.WATCHLIST_REFRESH_SECONDS)
     matcher.load()  # prints its own count -- see watchlist.py
@@ -186,7 +204,7 @@ def main():
                     # block at a time from the last confirmed height so
                     # nothing in between is skipped.
                     try:
-                        confirm.catch_up_to_tip(rpc, ch, persistence, stats, matcher)
+                        run_catch_up(rpc, ch, persistence, stats, matcher, trigger="'C' event")
                     except Exception as exc:
                         stats.rpc_failures += 1
                         print(f"[main] block confirmation failed at height={persistence.last_block_height + 1}: {exc}")
@@ -218,6 +236,20 @@ def main():
                 except Exception as exc:
                     stats.reorg_check_failures += 1
                     print(f"[main] periodic reorg check failed: {exc}")
+            if time.monotonic() - last_catch_up_retry >= config.CATCH_UP_RETRY_SECONDS:
+                last_catch_up_retry = time.monotonic()
+                # catch_up_to_tip is otherwise only triggered by a live 'C'
+                # event or a detected reorg -- if a bounded call (above, or
+                # an earlier one) left backlog remaining, or aborted on a
+                # failure, nothing else retries it, and the next real block
+                # could be ~10 minutes away (docs/08-build-plan.md, first
+                # mainnet soak run). This is what retries on its own
+                # instead. A no-op, cheap RPC call when already at tip.
+                try:
+                    run_catch_up(rpc, ch, persistence, stats, matcher, trigger="periodic retry")
+                except Exception as exc:
+                    stats.rpc_failures += 1
+                    print(f"[main] periodic catch-up retry failed at height={persistence.last_block_height + 1}: {exc}")
             matcher.maybe_refresh()
     except KeyboardInterrupt:
         pass

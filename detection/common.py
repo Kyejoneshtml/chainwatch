@@ -180,8 +180,22 @@ def already_alerted(ch, rule, watch_id, txids):
 
 
 def transaction_status(ch, txid):
+    # ORDER BY seen_at DESC LIMIT 1, not FINAL -- the same pattern
+    # checkpoints already uses (persist.read_checkpoint's
+    # `ORDER BY last_run_at DESC LIMIT 1 BY component`), corrected here to
+    # match docs/05-data-models.md rather than contradict it. WHERE
+    # txid = '{txid}' already prunes to this one key's own unmerged
+    # versions via the primary index (ORDER BY (txid)) regardless of
+    # FINAL -- measured live, same row count read either way (46,427).
+    # FINAL's actual cost here is the merge machinery needing every
+    # column to compare versions: 6.45 MiB read vs 3.19 MiB, 7ms vs 3ms,
+    # for the identical result, on a table this call hits once per
+    # candidate on every detector poll.
     validated_txid(txid)
     rows = ch.select(f"""
-        SELECT status, block_hash FROM transactions FINAL WHERE txid = '{txid}'
+        SELECT status, block_hash FROM transactions
+        WHERE txid = '{txid}'
+        ORDER BY seen_at DESC
+        LIMIT 1
     """)
     return (rows[0]["status"], rows[0]["block_hash"]) if rows else ("pending", "")

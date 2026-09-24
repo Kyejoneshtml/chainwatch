@@ -10,3 +10,7 @@ watchlist.local.md
 # Local development only. Publishes bitcoind RPC and ZMQ to 127.0.0.1 so the
 # ingestor can run on the host. Machine-specific; see docker-compose.override.yml.example
 docker-compose.override.yml
+
+# Runtime log output from the ingestor/detectors running under nohup
+# (see ingestor/RUNBOOK.md). Grows unbounded, machine-specific, not source.
+logs/

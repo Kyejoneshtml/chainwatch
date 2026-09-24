@@ -58,3 +58,11 @@ CH_DATABASE = os.environ["CH_DATABASE"]
 # Optional, not in REQUIRED -- existing deployments don't need to set this.
 # See watchlist.py for why 30s.
 WATCHLIST_REFRESH_SECONDS = int(os.environ.get("WATCHLIST_REFRESH_SECONDS", "30"))
+
+# How often main.py retries confirm.catch_up_to_tip on its own, rather than
+# only in response to a live 'C' event or a detected reorg. See
+# confirm.MAX_BLOCKS_PER_CALL and docs/08-build-plan.md's first mainnet
+# soak run -- without this, a bounded call left mid-backlog (or one that
+# failed outright) waits for the next real block, which could be ~10
+# minutes away. 30s matches the reorg-check cadence already established.
+CATCH_UP_RETRY_SECONDS = int(os.environ.get("CATCH_UP_RETRY_SECONDS", "30"))

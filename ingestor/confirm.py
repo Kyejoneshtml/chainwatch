@@ -147,16 +147,42 @@ def _process_and_time(rpc, ch, height, block_hash, persistence, stats, matcher):
         )
 
 
+MAX_BLOCKS_PER_CALL = 50  # docs/08-build-plan.md, first mainnet soak run:
+# a ~1,458-block backlog, walked with no bound at all, accumulated enough
+# small unmerged parts across flows/transactions (flushed every ~1,000
+# rows/2s) that a concurrent, unrelated query (known_txids's unanchored
+# `txid IN (...)` scan, not a FINAL lookup) hit the memory cap at block 41
+# of the burst and aborted the whole call -- and since catch_up_to_tip was
+# only ever triggered by a live 'C' event or a detected reorg, nothing
+# retried it; it sat 1,418 blocks behind waiting on the next real mainnet
+# block, which could be ~10 minutes away. Bounding each call keeps a
+# failure's blast radius to at most this many blocks' worth of progress
+# (already-processed blocks stay checkpointed either way -- persistence
+# only tracks the single next height to resume from, so a failure mid-call
+# never loses what came before it) and keeps the mempool subscriber from
+# being blocked for one very long unbroken stretch (docs/04-ingestion.md).
+# Retrying without waiting for a block event is main.py's job, on a timer.
+
+
 def catch_up_to_tip(rpc, ch, persistence, stats, matcher):
-    """Walk forward one block at a time from the last confirmed height to
-    the node's current tip -- covers normal single-block advance, catch-up
-    after downtime, and reprocessing after a reorg rollback, where the node
-    may already sit at the new tip with no further 'C' event to trigger it.
-    Never backfills from genesis: only advances from wherever the checkpoint
-    (or a just-completed rollback) left off.
+    """Walk forward one block at a time from the last confirmed height,
+    up to MAX_BLOCKS_PER_CALL blocks or the node's current tip, whichever
+    comes first -- covers normal single-block advance, catch-up after
+    downtime, and reprocessing after a reorg rollback, where the node may
+    already sit at the new tip with no further 'C' event to trigger it.
+    Never backfills from genesis: only advances from wherever the
+    checkpoint (or a just-completed rollback) left off.
+
+    Returns True if the tip was reached, False if MAX_BLOCKS_PER_CALL was
+    hit first and more backlog remains -- callers that need to know
+    whether to expect another call (main.py's periodic retry) check this
+    rather than re-deriving it themselves.
     """
     tip_height = rpc.getblockchaininfo()["blocks"]
-    while persistence.last_block_height < tip_height:
+    processed = 0
+    while persistence.last_block_height < tip_height and processed < MAX_BLOCKS_PER_CALL:
         next_height = persistence.last_block_height + 1
         next_hash = rpc.getblockhash(next_height)
         _process_and_time(rpc, ch, next_height, next_hash, persistence, stats, matcher)
+        processed += 1
+    return persistence.last_block_height >= tip_height

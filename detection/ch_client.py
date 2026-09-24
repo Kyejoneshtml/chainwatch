@@ -52,4 +52,25 @@ class CHClient:
 
     def select(self, query):
         text = self._execute(f"{query} FORMAT JSONEachRow")
-        return [json.loads(line, parse_float=Decimal) for line in text.splitlines() if line]
+        rows = [json.loads(line, parse_float=Decimal) for line in text.splitlines() if line]
+        for row in rows:
+            if "exception" in row:
+                # A query that streams output as it computes it (DISTINCT,
+                # a plain SELECT -- no GROUP BY needed before the first row
+                # can be emitted) can fail *after* HTTP 200 and real rows
+                # are already sent -- _execute()'s status-code check above
+                # doesn't see this, since the status line was already
+                # committed. ClickHouse appends the error as one more
+                # JSONEachRow line in the same stream instead. Verified
+                # live: a deliberately memory-capped streaming query
+                # returned 493 genuine rows followed by exactly one
+                # {"exception": "..."} line, indistinguishable from a real
+                # row to a caller that doesn't check for this -- silently
+                # treating a truncated result as complete. Found this way:
+                # fan_in_consolidation.sources_within_window's `r['address']`
+                # raised KeyError against exactly this row shape, live,
+                # during the first mainnet soak run. No column in this
+                # schema is ever named "exception", so this check is
+                # unambiguous for this codebase.
+                raise CHError(f"query={query!r} -> truncated mid-stream: {row['exception']}")
+        return rows
