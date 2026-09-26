@@ -428,6 +428,12 @@ Not fixed in code — this is a property of monitoring an address that already h
 
 `bc1qsh3639xtllc3y8lvclpnrk7y95vc9g4wucav77` and `bc1qttv968rzhpdha9rtj5k6dzp4s3jfzppdqjjuef` set `active = 0` via `ingestor/watchlist_cli.py remove` (not raw SQL, not a delete — the existing `ReplacingMergeTree` versioned-row pattern). ~208k and ~204k rule 1 candidates each since 24 Sep (top of the per-address candidate count above) — exchange/payment-processor-scale activity, roughly 100k transactions/day each, not a real victim's wallet — and under load this produced ~5,900 rule-1 alerts/minute plus `MEMORY_LIMIT_EXCEEDED`, exactly the shape `docs/08-build-plan.md`'s watchlist-selection section already flagged as a contamination risk (the anchor script-template finding) applied to a different cause (real but atypical volume, not a shared script). Alerts already written for these two (a large share of the ~255k total `alerts` rows) are untouched — not deleted, not invalidated — but **any rule 1 false-positive-rate analysis must exclude alerts from these two addresses**, since they are not representative of the victim-wallet traffic rule 1 is meant to be measured against. 20 active watches remain (confirmed via `watchlist FINAL WHERE active=1`). No process stopped or restarted — both detectors reload the watchlist on their own schedule, already picking up 20 rather than 22 on their next poll.
 
+### Known issues
+
+- Since the 2026-09-26T16:43:04Z deactivation (above), rule 1 and the ingestor have had zero `MEMORY_LIMIT_EXCEEDED` errors.
+- Rule 2 had 3 intermittent failures (17:09, 17:19, 18:00Z) in `wallet_drain.py`'s `address_totals` and `first_seen_for_address`. Both scan an address's full `flows` history with no time bound. Bounded runs mean no data loss. Planned fix, to ship with the fan_in txid-lookup fix at the next planned restart: merge those per-address queries into one pass, add `max_bytes_before_external_group_by` so they spill rather than fail, and cache `first_seen` per process.
+- Ingestor shutdown bug: the shutdown duplicate-check query hits the memory cap before `"shutdown:"` prints. Open question: are buffered rows flushed before that check runs?
+
 ### Definition of done
 
 - All four tier 1 rules running in shadow against live traffic
