@@ -205,21 +205,30 @@ def build_alert(watch, txid, entry, status, block_hash, balance_before, balance_
 
 
 def run_once(ch, stats):
-    run_started_at = common.now_dt()  # same checkpoint-race reasoning as
-    # watchlist_movement.py: next run's watermark is THIS run's start time.
+    # No run_started_at watermark any more -- see watchlist_movement.py's
+    # run_once for why advancing to the max seen_at actually processed is
+    # safer than a wall-clock start time.
 
     watches = common.load_watchlist(ch)
     global_watermark = common.read_checkpoint(ch, CHECKPOINT_COMPONENT)
 
-    alert_batch = []
+    entries = []  # (seen_at, watch, txid, entry)
     for watch in watches:
         effective_start = max(global_watermark, watch["created_at"]) if global_watermark else watch["created_at"]
         candidates = common.find_input_side_candidates(ch, watch["address"], effective_start)
-        stats.candidates_evaluated += len(candidates)
-        if not candidates:
-            continue
+        for txid, entry in candidates.items():
+            entries.append((entry["first_seen"], watch, txid, entry))
 
-        already = common.already_alerted(ch, RULE_NAME, watch["watch_id"], list(candidates.keys()))
+    batch, batch_max_seen_at = common.cap_candidates(entries, config.CANDIDATE_CAP)
+    stats.candidates_evaluated += len(batch)
+
+    by_watch = {}
+    for seen_at, watch, txid, entry in batch:
+        by_watch.setdefault(watch["watch_id"], (watch, {}))[1][txid] = entry
+
+    prelim = []  # (watch, txid, entry, balance_before, balance_after, address_first_seen, has_change)
+    for watch_id, (watch, watch_candidates) in by_watch.items():
+        already = common.already_alerted(ch, RULE_NAME, watch_id, list(watch_candidates.keys()))
         # Computed once per watch per run, not per candidate: these are
         # address-level aggregates reflecting the CURRENT known balance.
         # If more than one genuine drain candidate landed for the same
@@ -232,7 +241,7 @@ def run_once(ch, stats):
         address_first_seen = first_seen_for_address(ch, watch["address"])
         balance_after = total_received - total_spent
 
-        for txid, entry in candidates.items():
+        for txid, entry in watch_candidates.items():
             if txid in already:
                 continue
 
@@ -258,25 +267,32 @@ def run_once(ch, stats):
                 stats.skipped_change_detected += 1
                 continue
 
-            status, block_hash = common.transaction_status(ch, txid)
-            alert_batch.append(build_alert(
-                watch, txid, entry, status, block_hash,
-                balance_before, balance_after, address_first_seen, has_change,
-            ))
+            prelim.append((watch, txid, entry, balance_before, balance_after, address_first_seen, has_change))
 
-    if alert_batch:
-        ch.insert_rows("alerts", alert_batch)
-        stats.alerts_written += len(alert_batch)
+    statuses = common.transaction_statuses(ch, [p[1] for p in prelim])
+    alert_batch = [
+        build_alert(
+            watch, txid, entry, *statuses[txid],
+            balance_before, balance_after, address_first_seen, has_change,
+        )
+        for watch, txid, entry, balance_before, balance_after, address_first_seen, has_change in prelim
+    ]
 
-    common.write_checkpoint(ch, CHECKPOINT_COMPONENT, run_started_at)
+    common.insert_alerts_chunked(ch, alert_batch)
+    stats.alerts_written += len(alert_batch)
+
+    if batch_max_seen_at is not None:
+        common.write_checkpoint(ch, CHECKPOINT_COMPONENT, batch_max_seen_at)
     stats.runs += 1
+    more_remaining = len(batch) < len(entries)
     print(
-        f"[detector] run complete: watches={len(watches)} "
+        f"[detector] run complete: watches={len(watches)} batch={len(batch)} "
         f"candidates={stats.candidates_evaluated} alerts_written={len(alert_batch)} "
         f"skipped(no_balance={stats.skipped_no_meaningful_balance} "
         f"residual_remains={stats.skipped_residual_remains} "
         f"change_detected={stats.skipped_change_detected} "
         f"incomplete_history={stats.skipped_incomplete_history})"
+        + (" (backlog remains, next run continues it)" if more_remaining else "")
     )
 
 

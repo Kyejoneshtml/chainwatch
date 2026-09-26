@@ -181,23 +181,97 @@ def already_alerted(ch, rule, watch_id, txids):
     return seen
 
 
-def transaction_status(ch, txid):
-    # ORDER BY seen_at DESC LIMIT 1, not FINAL -- the same pattern
-    # checkpoints already uses (persist.read_checkpoint's
-    # `ORDER BY last_run_at DESC LIMIT 1 BY component`), corrected here to
-    # match docs/05-data-models.md rather than contradict it. WHERE
-    # txid = '{txid}' already prunes to this one key's own unmerged
-    # versions via the primary index (ORDER BY (txid)) regardless of
-    # FINAL -- measured live, same row count read either way (46,427).
-    # FINAL's actual cost here is the merge machinery needing every
-    # column to compare versions: 6.45 MiB read vs 3.19 MiB, 7ms vs 3ms,
-    # for the identical result, on a table this call hits once per
-    # candidate on every detector poll.
-    validated_txid(txid)
-    rows = ch.select(f"""
-        SELECT status, block_hash FROM transactions
-        WHERE txid = '{txid}'
-        ORDER BY seen_at DESC
-        LIMIT 1
-    """)
-    return (rows[0]["status"], rows[0]["block_hash"]) if rows else ("pending", "")
+DEFAULT_CANDIDATE_CAP = 2000  # see config.CANDIDATE_CAP -- bounds one
+# run_once() call to at most this many candidates, gathered across every
+# watch combined, so one run's work (and one run's failure) is bounded
+# instead of processing a potentially unbounded backlog in one shot.
+# docs/08-build-plan.md: watchlist_movement's first post-recalculation run
+# took 48 minutes processing ~281,000 candidates unbounded, one at a time.
+
+ALERT_INSERT_CHUNK = 500  # never one unbounded INSERT for a run's whole
+# alert batch, same "bound the payload size, not just the read side"
+# reasoning as ALERT_TXID_CHUNK above.
+
+
+def cap_candidates(entries, cap):
+    """entries: a flat list of tuples whose first element is a seen_at
+    datetime, gathered across every watch in the current run -- gather
+    first, cap once globally, rather than per watch, so one run_once()
+    call's total work is bounded regardless of how many watches
+    contributed candidates.
+
+    Sorted by seen_at ascending and cut at `cap`, but EXTENDED through any
+    tie at the cutoff seen_at: if the cap falls in the middle of a group of
+    candidates sharing the exact same seen_at (DateTime64(3) millisecond
+    ties are real under bursty replay/backlog conditions), the whole tied
+    group is included rather than split. This is what makes "advance the
+    checkpoint to the max seen_at actually processed" safe: the checkpoint
+    value can never be shared with a candidate left for next run, so
+    nothing between the old and new checkpoint is silently skipped -- err
+    toward rescanning, never toward skipping, since (watch_id, txid) dedup
+    already makes rescanning idempotent.
+
+    Returns (batch, batch_max_seen_at). batch_max_seen_at is None only when
+    entries is empty -- callers should not advance the checkpoint in that
+    case (nothing was observed to advance it to).
+    """
+    if not entries:
+        return [], None
+    ordered = sorted(entries, key=lambda e: e[0])
+    if len(ordered) <= cap:
+        return ordered, ordered[-1][0]
+    cutoff = ordered[cap - 1][0]
+    end = cap
+    while end < len(ordered) and ordered[end][0] == cutoff:
+        end += 1
+    batch = ordered[:end]
+    return batch, batch[-1][0]
+
+
+def transaction_statuses(ch, txids):
+    """Batched form of transaction_status: one query per ALERT_TXID_CHUNK
+    txids instead of one round trip per candidate -- the single biggest
+    cost driver behind watchlist_movement's 48-minute run
+    (docs/08-build-plan.md): 421,225 individual calls project-wide during
+    that window, ~3.85ms DB time each but a full serial HTTP round trip per
+    call, unbatched. `ORDER BY seen_at DESC LIMIT 1 BY txid` is the batched
+    form of transaction_status's own per-txid `ORDER BY seen_at DESC LIMIT
+    1` -- LIMIT n BY, not FINAL, same reasoning as transaction_status
+    itself, just grouped.
+
+    Returns {txid: (status, block_hash)}; a txid with no `transactions`
+    row at all is ("pending", ""), matching transaction_status's own
+    default for that case.
+    """
+    if not txids:
+        return {}
+    txids = list(dict.fromkeys(txids))  # de-dup, preserve order -- the
+    # same txid can appear twice in one run (two different watches, same
+    # transaction touching both as an input), and status doesn't depend on
+    # which watch is asking.
+    for t in txids:
+        validated_txid(t)
+    result = {}
+    for i in range(0, len(txids), ALERT_TXID_CHUNK):
+        chunk = txids[i:i + ALERT_TXID_CHUNK]
+        id_list = ",".join(f"'{t}'" for t in chunk)
+        rows = ch.select(f"""
+            SELECT txid, status, block_hash FROM transactions
+            WHERE txid IN ({id_list})
+            ORDER BY seen_at DESC
+            LIMIT 1 BY txid
+        """)
+        for r in rows:
+            result[r["txid"]] = (r["status"], r["block_hash"])
+    for t in txids:
+        result.setdefault(t, ("pending", ""))
+    return result
+
+
+def insert_alerts_chunked(ch, alerts):
+    """Never one unbounded INSERT for a run's whole alert batch -- chunks
+    of ALERT_INSERT_CHUNK rows regardless of how many alerts one capped
+    candidate batch produces."""
+    for i in range(0, len(alerts), ALERT_INSERT_CHUNK):
+        ch.insert_rows("alerts", alerts[i:i + ALERT_INSERT_CHUNK])
+

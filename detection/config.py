@@ -61,3 +61,10 @@ REQUIRE_NO_CHANGE = os.environ.get("REQUIRE_NO_CHANGE", "true").strip().lower() 
 # per-watch, same reasoning as rule 2's thresholds above.
 FAN_IN_MIN_SOURCES = int(os.environ.get("FAN_IN_MIN_SOURCES", "10"))
 FAN_IN_WINDOW_SECONDS = int(os.environ.get("FAN_IN_WINDOW_SECONDS", str(60 * 60)))  # 1 hour
+
+# Shared by all three rules, see common.cap_candidates. Bounds one
+# run_once() call to at most this many candidates, gathered across every
+# watch combined, rather than processing an entire, potentially unbounded
+# backlog in one shot (docs/08-build-plan.md: watchlist_movement's first
+# post-recalculation run took 48 minutes doing exactly that).
+CANDIDATE_CAP = int(os.environ.get("CANDIDATE_CAP", "2000"))

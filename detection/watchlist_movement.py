@@ -96,44 +96,63 @@ def build_alert(watch, txid, entry, status, block_hash):
 
 
 def run_once(ch, stats):
-    run_started_at = common.now_dt()  # captured before querying -- see
-    # module docs on the checkpoint race: the NEXT run's watermark must be
-    # THIS run's start time, not its completion time, or a row landing
-    # mid-run could be silently skipped forever rather than merely
-    # re-scanned once (safe, since (watch_id, txid) dedup makes
-    # re-scanning idempotent).
+    # No run_started_at watermark any more -- the checkpoint now advances
+    # to the max seen_at actually processed in this run's capped batch
+    # (below), which is safer than a wall-clock start time: it can never
+    # claim to have processed a row it did not actually see, the exact
+    # race the old run_started_at approach was reasoning about avoiding.
 
     watches = common.load_watchlist(ch)
     global_watermark = common.read_checkpoint(ch, CHECKPOINT_COMPONENT)
 
-    alert_batch = []
+    # Gather every watch's full candidate set first (this query is already
+    # cheap and address-anchored -- docs/08-build-plan.md), then cap ONCE,
+    # globally, across all watches combined -- not per watch -- so one
+    # run's total work is bounded regardless of how many watches have a
+    # backlog.
+    entries = []  # (seen_at, watch, txid, entry)
     for watch in watches:
         effective_start = max(global_watermark, watch["created_at"]) if global_watermark else watch["created_at"]
         candidates = common.find_input_side_candidates(ch, watch["address"], effective_start)
-        stats.candidates_evaluated += len(candidates)
-        if not candidates:
-            continue
-
-        already = common.already_alerted(ch, RULE_NAME, watch["watch_id"], list(candidates.keys()))
         for txid, entry in candidates.items():
+            entries.append((entry["first_seen"], watch, txid, entry))
+
+    batch, batch_max_seen_at = common.cap_candidates(entries, config.CANDIDATE_CAP)
+    stats.candidates_evaluated += len(batch)
+
+    by_watch = {}
+    for seen_at, watch, txid, entry in batch:
+        by_watch.setdefault(watch["watch_id"], (watch, {}))[1][txid] = entry
+
+    prelim = []  # (watch, txid, entry) that pass the threshold, pending a batched status lookup
+    for watch_id, (watch, watch_candidates) in by_watch.items():
+        already = common.already_alerted(ch, RULE_NAME, watch_id, list(watch_candidates.keys()))
+        for txid, entry in watch_candidates.items():
             if txid in already:
                 continue
             if entry["value"] < watch["min_value"]:
                 stats.skipped_below_threshold += 1
                 continue
-            status, block_hash = common.transaction_status(ch, txid)
-            alert_batch.append(build_alert(watch, txid, entry, status, block_hash))
+            prelim.append((watch, txid, entry))
 
-    if alert_batch:
-        ch.insert_rows("alerts", alert_batch)
-        stats.alerts_written += len(alert_batch)
+    statuses = common.transaction_statuses(ch, [txid for _, txid, _ in prelim])
+    alert_batch = [
+        build_alert(watch, txid, entry, *statuses[txid])
+        for watch, txid, entry in prelim
+    ]
 
-    common.write_checkpoint(ch, CHECKPOINT_COMPONENT, run_started_at)
+    common.insert_alerts_chunked(ch, alert_batch)
+    stats.alerts_written += len(alert_batch)
+
+    if batch_max_seen_at is not None:
+        common.write_checkpoint(ch, CHECKPOINT_COMPONENT, batch_max_seen_at)
     stats.runs += 1
+    more_remaining = len(batch) < len(entries)
     print(
-        f"[detector] run complete: watches={len(watches)} "
+        f"[detector] run complete: watches={len(watches)} batch={len(batch)} "
         f"candidates={stats.candidates_evaluated} alerts_written={len(alert_batch)} "
         f"skipped_below_threshold={stats.skipped_below_threshold}"
+        + (" (backlog remains, next run continues it)" if more_remaining else "")
     )
 
 

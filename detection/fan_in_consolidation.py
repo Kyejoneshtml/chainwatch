@@ -213,22 +213,37 @@ def build_alert(watch, txid, sources, receiving_txids, status, block_hash,
 
 
 def run_once(ch, stats):
-    run_started_at = common.now_dt()  # same checkpoint-race reasoning as
-    # the other two rules: next run's watermark is THIS run's start time.
+    # No run_started_at watermark any more -- see watchlist_movement.py's
+    # run_once for why advancing to the max seen_at actually processed is
+    # safer than a wall-clock start time.
 
     watches = common.load_watchlist(ch)
     global_watermark = common.read_checkpoint(ch, CHECKPOINT_COMPONENT)
 
-    alert_batch = []
+    entries = []  # (seen_at, watch, txid)
     for watch in watches:
         effective_start = max(global_watermark, watch["created_at"]) if global_watermark else watch["created_at"]
-        candidates = common.find_receiving_txids(ch, watch["address"], effective_start)
-        stats.candidates_evaluated += len(candidates)
-        if not candidates:
-            continue
-
-        already = common.already_alerted(ch, RULE_NAME, watch["watch_id"], list(candidates.keys()))
+        candidates = common.find_receiving_txids(ch, watch["address"], effective_start)  # {txid: first_seen}
         for txid, first_seen in candidates.items():
+            entries.append((first_seen, watch, txid))
+
+    batch, batch_max_seen_at = common.cap_candidates(entries, config.CANDIDATE_CAP)
+    stats.candidates_evaluated += len(batch)
+
+    by_watch = {}
+    for first_seen, watch, txid in batch:
+        by_watch.setdefault(watch["watch_id"], (watch, {}))[1][txid] = first_seen
+
+    # sources_within_window/window_value_received stay per-candidate --
+    # deliberately not batched here. Their own unanchored txid IN (...)
+    # scan is a separate, unresolved schema decision (docs/08-build-plan.md);
+    # this run is only bounded in candidate COUNT, same as the other two
+    # rules, not fixed at the query-shape level. fan_in_consolidation is
+    # left stopped in production until that decision is made.
+    prelim = []  # (watch, txid, sources, receiving_txids, window_start, first_seen, window_seconds_used, value_received)
+    for watch_id, (watch, watch_candidates) in by_watch.items():
+        already = common.already_alerted(ch, RULE_NAME, watch_id, list(watch_candidates.keys()))
+        for txid, first_seen in watch_candidates.items():
             if txid in already:
                 continue
 
@@ -243,23 +258,30 @@ def run_once(ch, stats):
                 stats.skipped_below_min_sources += 1
                 continue
 
-            status, block_hash = common.transaction_status(ch, txid)
             value_received = window_value_received(ch, watch["address"], receiving_txids)
-            alert_batch.append(build_alert(
-                watch, txid, sources, receiving_txids, status, block_hash,
-                window_start, first_seen, window_seconds_used, value_received,
-            ))
+            prelim.append((watch, txid, sources, receiving_txids, window_start, first_seen, window_seconds_used, value_received))
 
-    if alert_batch:
-        ch.insert_rows("alerts", alert_batch)
-        stats.alerts_written += len(alert_batch)
+    statuses = common.transaction_statuses(ch, [p[1] for p in prelim])
+    alert_batch = [
+        build_alert(
+            watch, txid, sources, receiving_txids, *statuses[txid],
+            window_start, first_seen, window_seconds_used, value_received,
+        )
+        for watch, txid, sources, receiving_txids, window_start, first_seen, window_seconds_used, value_received in prelim
+    ]
 
-    common.write_checkpoint(ch, CHECKPOINT_COMPONENT, run_started_at)
+    common.insert_alerts_chunked(ch, alert_batch)
+    stats.alerts_written += len(alert_batch)
+
+    if batch_max_seen_at is not None:
+        common.write_checkpoint(ch, CHECKPOINT_COMPONENT, batch_max_seen_at)
     stats.runs += 1
+    more_remaining = len(batch) < len(entries)
     print(
-        f"[detector] run complete: watches={len(watches)} "
+        f"[detector] run complete: watches={len(watches)} batch={len(batch)} "
         f"candidates={stats.candidates_evaluated} alerts_written={len(alert_batch)} "
         f"skipped_below_min_sources={stats.skipped_below_min_sources}"
+        + (" (backlog remains, next run continues it)" if more_remaining else "")
     )
 
 
