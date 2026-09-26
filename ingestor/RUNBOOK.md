@@ -124,6 +124,13 @@ and all of `flows`/`transactions`).
 
 ## Starting it again
 
+**`btc1` and `btc2` (the regtest nodes) must be stopped first, if they're
+running.** `clickhouse-config/memory-limits.xml`'s `max_server_memory_usage`
+budget (`docs/08-build-plan.md`'s OOM section, recalculated 2026-09-26) has
+no headroom reserved for them — they exist for `regtest/*.sh` test runs,
+not for running alongside a live soak. If both are up, `docker compose stop
+btc1 btc2` before starting or resuming the four processes below.
+
 From the repo root:
 
 ```

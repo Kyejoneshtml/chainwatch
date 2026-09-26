@@ -14,10 +14,49 @@
   value below.
 -->
 <clickhouse>
-    <!-- VM total 7.75 GiB, minus bitcoind's worst case budget (dbcache
-         plus maxmempool plus overhead, plus btc1/btc2's regtest defaults),
-         minus a small reserve for the Docker Desktop VM's own overhead.
-         About 2.03 GiB by that arithmetic; rounded down slightly for
-         margin. -->
-    <max_server_memory_usage>2000000000</max_server_memory_usage>
+    <!-- VM total 7.75 GiB, minus bitcoind's worst case budget, minus a
+         small reserve for the Docker Desktop VM's own overhead. Originally
+         reserved btc1/btc2's regtest worst case (450 MiB default dbcache
+         each, 0.88 GiB combined) too, on the assumption they might be
+         running at the same time as a soak, confirmed 2026-09-26 that
+         they are not: idle ClickHouse RSS alone (1.88 GiB) already reached
+         the old 2,000,000,000-byte cap within minutes of a restart, with
+         btc1/btc2 stopped and nothing connected. They must be stopped
+         whenever the soak runs (docs/08-build-plan.md, RUNBOOK.md), so
+         reserving for them here was budgeting for a state that never
+         actually coincides with ClickHouse needing the memory.
+
+         Redone without that reservation: old budget 2,000,000,000 bytes
+         (~1.86 GiB) + the btc1/btc2 reservation being freed, 943,718,400
+         bytes (900 MiB, 0.88 GiB) = 2,943,718,400 bytes (~2.74 GiB) raw,
+         rounded down to 2,900,000,000 bytes (~2.70 GiB) for margin, same
+         round-number convention as the original value. -->
+    <max_server_memory_usage>2900000000</max_server_memory_usage>
+
+    <!-- System log tables, disabled where they only cost memory/disk over
+         a multi-day soak with no one reading them: trace_log (per-query
+         sampled stack traces), text_log (duplicates what nohup's own
+         redirected stdout/stderr already captures for this project),
+         metric_log and asynchronous_metric_log (periodic metric snapshots;
+         system.metrics/system.asynchronous_metrics are queried live
+         instead, per docs/08-build-plan.md's OOM section, not read back
+         from history), processors_profile_log (per-processor profiling,
+         never queried in this project) and part_log (part lifecycle
+         events; system.parts covers current state, which is what's
+         actually been used here). remove="1" deletes the whole config
+         subtree inherited from config.xml, which is how a built-in system
+         log gets disabled from config.d/ rather than merged into.
+         query_log is kept, since query_log is the one system log this
+         project has actually queried against (system.query_log, OOM
+         root-cause investigation), but given a 3-day TTL so it doesn't
+         grow unbounded across a multi-day soak either. -->
+    <trace_log remove="1"/>
+    <text_log remove="1"/>
+    <metric_log remove="1"/>
+    <asynchronous_metric_log remove="1"/>
+    <processors_profile_log remove="1"/>
+    <part_log remove="1"/>
+    <query_log>
+        <ttl>event_date + INTERVAL 3 DAY DELETE</ttl>
+    </query_log>
 </clickhouse>
