@@ -1,3 +1,4 @@
+import signal
 import time
 from dataclasses import dataclass, field
 
@@ -132,6 +133,15 @@ def process_and_log(rpc, txid, source, stats, persistence, matcher):
 
 
 def main():
+    # A backgrounded, non-interactive shell (nohup ... &, per RUNBOOK.md)
+    # starts this process with SIGINT ignored, and Python inherits that --
+    # confirmed live: all four processes ignored SIGINT during the soak
+    # ending 2026-09-26 and needed SIGTERM instead, so the finally/shutdown
+    # block below never ran. Installing explicit handlers makes both signals
+    # raise KeyboardInterrupt regardless of the inherited disposition.
+    signal.signal(signal.SIGINT, signal.default_int_handler)
+    signal.signal(signal.SIGTERM, signal.default_int_handler)
+
     rpc = RPCClient()
     ch = CHClient()
 

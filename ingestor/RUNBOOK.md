@@ -103,6 +103,19 @@ first (it may just be slow to flush a large buffer); only escalate to
 here that you had to force it, since that's the one path that can lose
 unflushed data.
 
+**2026-09-26: all four processes ignored `SIGINT` during the soak run and
+had to be force-stopped with `SIGTERM`** — no `shutdown:` line ever
+appeared. Cause: a backgrounded, non-interactive shell (`nohup ... &`, the
+exact launch pattern below) starts the process with `SIGINT` ignored, and
+Python inherits that disposition rather than resetting it. Fixed: all four
+`main()` functions now install explicit handlers
+(`signal.signal(signal.SIGINT, signal.default_int_handler)`, same for
+`SIGTERM`) as their first line, so both signals reliably raise
+`KeyboardInterrupt` and run the shutdown path regardless of how the process
+was started. Verified live: launched the same way (`nohup` + timestamp
+wrapper + non-interactive `bash -c`), `SIGINT` produced a `shutdown:` line
+within 1 second.
+
 Stopping the ingestor does not stop `bitcoind` or `clickhouse` (the Docker
 containers) — those keep running independently. To stop those too:
 `docker compose down` from the repo root (never `docker compose down -v`

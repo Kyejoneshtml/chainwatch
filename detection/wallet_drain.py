@@ -37,6 +37,7 @@ Every alert this rule writes has is_shadow = 1. Nothing is delivered.
 """
 import argparse
 import json
+import signal
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -280,6 +281,16 @@ def run_once(ch, stats):
 
 
 def main():
+    # A backgrounded, non-interactive shell (nohup ... &, per
+    # ingestor/RUNBOOK.md) starts this process with SIGINT ignored, and
+    # Python inherits that -- confirmed live: all four processes ignored
+    # SIGINT during the soak ending 2026-09-26 and needed SIGTERM instead,
+    # so the finally/shutdown block below never ran. Installing explicit
+    # handlers makes both signals raise KeyboardInterrupt regardless of the
+    # inherited disposition.
+    signal.signal(signal.SIGINT, signal.default_int_handler)
+    signal.signal(signal.SIGTERM, signal.default_int_handler)
+
     parser = argparse.ArgumentParser(description=f"Detection rule: {RULE_NAME} (shadow mode)")
     parser.add_argument("--once", action="store_true", help="run a single pass and exit")
     args = parser.parse_args()
