@@ -432,7 +432,7 @@ Not fixed in code — this is a property of monitoring an address that already h
 
 - Since the 2026-09-26T16:43:04Z deactivation (above), rule 1 and the ingestor have had zero `MEMORY_LIMIT_EXCEEDED` errors.
 - Rule 2 had 3 intermittent failures (17:09, 17:19, 18:00Z) in `wallet_drain.py`'s `address_totals` and `first_seen_for_address`. Both scan an address's full `flows` history with no time bound. Bounded runs mean no data loss. Planned fix, to ship with the fan_in txid-lookup fix at the next planned restart: merge those per-address queries into one pass, add `max_bytes_before_external_group_by` so they spill rather than fail, and cache `first_seen` per process.
-- Ingestor shutdown bug: the shutdown duplicate-check query hits the memory cap before `"shutdown:"` prints. Open question: are buffered rows flushed before that check runs?
+- Ingestor shutdown bug: the shutdown duplicate-check query hits the memory cap before `"shutdown:"` prints. `main.py`'s `finally` block calls `persistence.flush()` before `count_duplicate_transactions` / `count_duplicate_flows`, so buffered rows are written before the check that crashes. Only the shutdown summary is lost. Residual risk: if that final flush fails, `persist.py` retains the rows but the process then exits, losing up to ~2s of rows. Planned fix for the next restart: wrap both duplicate checks in try/except, retry a failed final flush before exiting, and consider moving the full-table duplicate checks out of the shutdown path.
 
 ### Definition of done
 
