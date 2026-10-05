@@ -24,7 +24,7 @@ class CHClient:
         self._database = database
         self._session = requests.Session()
 
-    def _execute(self, query, body=None):
+    def _execute(self, query, body=None, timeout=30):
         if body is None:
             # Query-only call (select()). The query goes in the POST body,
             # not the `query` URL param -- ClickHouse's HTTP form parser
@@ -35,7 +35,7 @@ class CHClient:
         else:
             params = {"database": self._database, "query": query}
             data = body
-        resp = self._session.post(self._url, params=params, data=data, auth=self._auth, timeout=30)
+        resp = self._session.post(self._url, params=params, data=data, auth=self._auth, timeout=timeout)
         if resp.status_code != 200:
             raise CHError(f"query={query!r} -> HTTP {resp.status_code}: {resp.text}")
         return resp.text
@@ -50,8 +50,8 @@ class CHClient:
         body = "\n".join(json.dumps(row) for row in rows)
         self._execute(f"INSERT INTO {table} FORMAT JSONEachRow", body=body)
 
-    def select(self, query):
-        text = self._execute(f"{query} FORMAT JSONEachRow")
+    def select(self, query, timeout=30):
+        text = self._execute(f"{query} FORMAT JSONEachRow", timeout=timeout)
         rows = [json.loads(line, parse_float=Decimal) for line in text.splitlines() if line]
         for row in rows:
             if "exception" in row:
@@ -67,7 +67,7 @@ class CHClient:
                 # {"exception": "..."} line, indistinguishable from a real
                 # row to a caller that doesn't check for this -- silently
                 # treating a truncated result as complete. Found this way:
-                # fan_in_consolidation.sources_within_window's `r['address']`
+                # fan_in_consolidation.sources_within_window's (since replaced) `r['address']`
                 # raised KeyError against exactly this row shape, live,
                 # during the first mainnet soak run. No column in this
                 # schema is ever named "exception", so this check is

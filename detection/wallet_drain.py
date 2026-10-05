@@ -87,36 +87,55 @@ class Stats:
         }
 
 
-def address_totals(ch, address):
-    """Total ever received / ever spent for `address`, deduped at the SQL
-    level on (txid, position, value) -- collapses the pending-arrival and
-    post-confirmation duplicate flow rows for the same input/output, same
-    reasoning as common.find_input_side_candidates. Deliberately unbounded
-    by any watch's created_at: this is meant to reflect the address's real
-    observed balance, not just movement since it was watched.
+_first_seen_cache = {}  # address -> earliest first_seen this process has seen
+
+
+def address_summary(ch, address):
+    """(total_received, total_spent, first_seen) for `address` in one pass
+    over its flows history -- previously three separate full-history
+    queries (address_totals' two, first_seen_for_address's one), each
+    independently able to be the query the server-wide memory cap kills
+    (docs/08-build-plan.md, known issues).
+
+    Totals are deduped on (txid, position, value) per direction --
+    collapses the pending-arrival and post-confirmation duplicate flow
+    rows for the same input/output, same reasoning as
+    common.find_input_side_candidates. Deliberately unbounded by any
+    watch's created_at: this is meant to reflect the address's real
+    observed balance, not just movement since it was watched. The GROUP BY
+    spills to disk past config.WALLET_DRAIN_SPILL_BYTES rather than holding
+    everything in memory.
+
+    first_seen is cached per process, keeping the earliest value ever
+    returned. With min() now riding along in the same pass the cache saves
+    no query; what it buys is stability: flows is a
+    ReplacingMergeTree(seen_at), so a background merge that collapses a
+    pending-arrival row into its later confirmed copy can RAISE
+    min(seen_at), moving "observed since" forward after the fact.
     """
     address = common.validated_address(address)
-    received = ch.select(f"""
-        SELECT sum(v) AS total FROM (
-            SELECT DISTINCT txid, position, value AS v FROM flows
-            WHERE direction = 'out' AND address = '{address}'
+    rows = ch.select(f"""
+        SELECT
+            sumIf(value, direction = 'out') AS total_received,
+            sumIf(value, direction = 'in') AS total_spent,
+            minOrNull(first_seen) AS first_seen
+        FROM (
+            SELECT direction, txid, position, value, min(seen_at) AS first_seen
+            FROM flows
+            WHERE address = '{address}'
+            GROUP BY direction, txid, position, value
         )
+        SETTINGS max_bytes_before_external_group_by = {config.WALLET_DRAIN_SPILL_BYTES}
     """)
-    spent = ch.select(f"""
-        SELECT sum(v) AS total FROM (
-            SELECT DISTINCT txid, position, value AS v FROM flows
-            WHERE direction = 'in' AND address = '{address}'
-        )
-    """)
-    total_received = int(received[0]["total"]) if received and received[0]["total"] is not None else 0
-    total_spent = int(spent[0]["total"]) if spent and spent[0]["total"] is not None else 0
-    return total_received, total_spent
-
-
-def first_seen_for_address(ch, address):
-    address = common.validated_address(address)
-    rows = ch.select(f"SELECT min(seen_at) AS first_seen FROM flows WHERE address = '{address}'")
-    return common.parse_ch_datetime(rows[0]["first_seen"]) if rows and rows[0]["first_seen"] else None
+    row = rows[0] if rows else {}
+    total_received = int(row.get("total_received") or 0)
+    total_spent = int(row.get("total_spent") or 0)
+    fresh = common.parse_ch_datetime(row["first_seen"]) if row.get("first_seen") else None
+    cached = _first_seen_cache.get(address)
+    first_seen = min(d for d in (cached, fresh) if d is not None) if (cached or fresh) else None
+    if first_seen is not None:
+        _first_seen_cache[address] = first_seen
+    return total_received, total_spent, first_seen
 
 
 def has_change_to_self(ch, txid, address):
@@ -237,8 +256,7 @@ def run_once(ch, stats):
         # the others' effect within the same batch. Accepted as a stated,
         # minor imprecision rather than engineering a full per-candidate
         # ordering pass for an edge case this unlikely.
-        total_received, total_spent = address_totals(ch, watch["address"])
-        address_first_seen = first_seen_for_address(ch, watch["address"])
+        total_received, total_spent, address_first_seen = address_summary(ch, watch["address"])
         balance_after = total_received - total_spent
 
         for txid, entry in watch_candidates.items():

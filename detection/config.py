@@ -56,11 +56,28 @@ DETECTION_INTERVAL_SECONDS = int(os.environ.get("DETECTION_INTERVAL_SECONDS", "1
 # this codebase uses -- no floats anywhere past this comment.
 RESIDUAL_THRESHOLD_SATS = int(os.environ.get("RESIDUAL_THRESHOLD_SATS", "10000"))
 REQUIRE_NO_CHANGE = os.environ.get("REQUIRE_NO_CHANGE", "true").strip().lower() not in ("false", "0", "")
+# wallet_drain.address_summary's GROUP BY spills to disk past this many
+# bytes of aggregation state instead of growing until the server-wide cap
+# picks it as the query to kill (docs/08-build-plan.md, known issues).
+# A backstop, not the main fix: the largest active watch held 162,571
+# flows rows on 2026-10-05, tens of MB of state, so this rarely triggers
+# at current watch sizes. Collapsing three full-history scans into one is
+# what actually cuts the failure exposure.
+WALLET_DRAIN_SPILL_BYTES = int(os.environ.get("WALLET_DRAIN_SPILL_BYTES", str(100_000_000)))
 
 # Rule 3 (fan-in consolidation), docs/06-detection.md defaults. Global, not
 # per-watch, same reasoning as rule 2's thresholds above.
 FAN_IN_MIN_SOURCES = int(os.environ.get("FAN_IN_MIN_SOURCES", "10"))
 FAN_IN_WINDOW_SECONDS = int(os.environ.get("FAN_IN_WINDOW_SECONDS", str(60 * 60)))  # 1 hour
+# fan_in_consolidation.sources_by_txid is a full scan of flows.txid (4.08
+# GiB compressed on 2026-10-05) -- txid is not a prefix of flows's ORDER BY,
+# so nothing prunes it. Fewer threads means fewer concurrent 65k-row read
+# blocks (~4.5 MiB each for txid, matching the allocation sizes in the
+# 26 Sep soak's MEMORY_LIMIT_EXCEEDED errors) held at once, in exchange for
+# a slower scan; the timeout is sized for that slower scan, not the
+# 30-second default every other query uses.
+FAN_IN_SCAN_MAX_THREADS = int(os.environ.get("FAN_IN_SCAN_MAX_THREADS", "2"))
+FAN_IN_SCAN_TIMEOUT_SECONDS = int(os.environ.get("FAN_IN_SCAN_TIMEOUT_SECONDS", "300"))
 
 # Shared by all three rules, see common.cap_candidates. Bounds one
 # run_once() call to at most this many candidates, gathered across every

@@ -45,6 +45,7 @@ likely to need it working at full strength. Every alert's `detail` carries
 Every alert this rule writes has is_shadow = 1. Nothing is delivered.
 """
 import argparse
+import bisect
 import hashlib
 import json
 import signal
@@ -91,57 +92,100 @@ class Stats:
         }
 
 
-def sources_within_window(ch, address, window_start, window_end):
-    """Every distinct source address (flows.direction='in') across every
-    transaction where `address` received something (direction='out')
-    within [window_start, window_end]. Returns (sorted source addresses,
-    the receiving txids they came through).
+def _ranges_predicate(ranges):
+    """SQL predicate matching rows for any (address, lo, hi) range --
+    address-anchored, so the primary key prunes it to each watched
+    address's own rows."""
+    return " OR ".join(
+        f"(address = '{common.validated_address(a)}' AND seen_at BETWEEN "
+        f"toDateTime64('{common.dt_str(lo)}', 3) AND toDateTime64('{common.dt_str(hi)}', 3))"
+        for a, lo, hi in ranges
+    )
+
+
+def receiving_rows(ch, ranges):
+    """Every direction='out' row paying a watched address within its range,
+    for every watch in `ranges` at once. Returns {address: [(seen_at, txid,
+    position, value)]} sorted by seen_at, so each candidate's window is a
+    bisect away rather than a query away.
     """
-    address = common.validated_address(address)
-    receiving_rows = ch.select(f"""
-        SELECT DISTINCT txid FROM flows
-        WHERE direction = 'out' AND address = '{address}'
-          AND seen_at BETWEEN toDateTime64('{common.dt_str(window_start)}', 3)
-                          AND toDateTime64('{common.dt_str(window_end)}', 3)
+    rows = ch.select(f"""
+        SELECT address, txid, position, value, seen_at FROM flows
+        WHERE direction = 'out' AND ({_ranges_predicate(ranges)})
     """)
-    receiving_txids = [r["txid"] for r in receiving_rows]
-    if not receiving_txids:
-        return [], []
-
-    sources = set()
-    for i in range(0, len(receiving_txids), common.ALERT_TXID_CHUNK):
-        chunk = receiving_txids[i:i + common.ALERT_TXID_CHUNK]
-        id_list = ",".join(f"'{common.validated_txid(t)}'" for t in chunk)
-        rows = ch.select(f"""
-            SELECT DISTINCT address FROM flows
-            WHERE direction = 'in' AND address != '' AND txid IN ({id_list})
-        """)
-        sources.update(r["address"] for r in rows)
-    return sorted(sources), receiving_txids
+    by_address = {}
+    for r in rows:
+        by_address.setdefault(r["address"], []).append(
+            (common.parse_ch_datetime(r["seen_at"]), r["txid"], int(r["position"]), int(r["value"]))
+        )
+    for lst in by_address.values():
+        lst.sort()
+    return by_address
 
 
-def window_value_received(ch, address, receiving_txids):
-    """Total value the watched address received across receiving_txids,
-    deduped at the SQL level on (txid, position, value) -- same reasoning
-    as wallet_drain.py's address_totals, collapsing the pending-arrival and
-    post-confirmation duplicate rows for the same output.
+def sources_by_txid(ch, ranges):
+    """{txid: set of source addresses (flows.direction='in')} for every
+    transaction receiving_rows() returns for the same ranges.
+
+    THE ONE UNANCHORED SCAN, once per run. txid is not a prefix of flows's
+    ORDER BY (address, direction, position, txid), so a txid lookup reads
+    the whole txid column whatever its shape -- no schema change is made
+    here (schema/ is protected; the bloom-filter / projection / separate-
+    table decision in docs/08-build-plan.md is still open). What was
+    broken was how often: the previous version ran this scan once per
+    1,000-txid chunk per CANDIDATE, so a busy watched address cost
+    thousands of full scans per run, and the 26 Sep soak completed zero
+    runs in 59 minutes (52 MEMORY_LIMIT_EXCEEDED, server-wide cap). Now
+    the receiving txids for every window in the run are resolved together.
+
+    Selected by subquery rather than an inline IN list, so the run's
+    whole txid set goes through one scan regardless of size -- no
+    ALERT_TXID_CHUNK splitting, no max_query_size ceiling. The subquery is
+    receiving_rows()'s own predicate, so both see the same transactions.
+    PREWHERE on txid means address is only read for the few granules that
+    match.
     """
-    if not receiving_txids:
-        return 0
-    address = common.validated_address(address)
-    total = 0
-    for i in range(0, len(receiving_txids), common.ALERT_TXID_CHUNK):
-        chunk = receiving_txids[i:i + common.ALERT_TXID_CHUNK]
-        id_list = ",".join(f"'{common.validated_txid(t)}'" for t in chunk)
-        rows = ch.select(f"""
-            SELECT sum(v) AS total FROM (
-                SELECT DISTINCT txid, position, value AS v FROM flows
-                WHERE direction = 'out' AND address = '{address}' AND txid IN ({id_list})
-            )
-        """)
-        if rows and rows[0]["total"] is not None:
-            total += int(rows[0]["total"])
-    return total
+    timeout = config.FAN_IN_SCAN_TIMEOUT_SECONDS
+    rows = ch.select(f"""
+        SELECT DISTINCT txid, address FROM flows
+        PREWHERE txid IN (
+            SELECT txid FROM flows
+            WHERE direction = 'out' AND ({_ranges_predicate(ranges)})
+        )
+        WHERE direction = 'in' AND address != ''
+        SETTINGS max_threads = {config.FAN_IN_SCAN_MAX_THREADS}, max_execution_time = {timeout}
+    """, timeout=timeout + 10)
+    sources = {}
+    for r in rows:
+        sources.setdefault(r["txid"], set()).add(r["address"])
+    return sources
+
+
+def window_sources_and_value(rows, seen_keys, sources, window_start, window_end):
+    """Sources, receiving txids and value received for one candidate's
+    window, from receiving_rows()'s sorted rows for its watch.
+
+    A txid is in the window if any of its rows' seen_at falls within
+    [window_start, window_end], inclusive at both ends -- the same as the
+    previous SQL BETWEEN. Value is deduped on (txid, position, value), same
+    reasoning as wallet_drain.py's address_summary, collapsing the
+    pending-arrival and post-confirmation copies of the same output.
+    """
+    lo = bisect.bisect_left(seen_keys, window_start)
+    hi = bisect.bisect_right(seen_keys, window_end)
+    receiving_txids = []
+    seen_txids = set()
+    outputs = set()
+    for _, txid, position, value in rows[lo:hi]:
+        if txid not in seen_txids:
+            seen_txids.add(txid)
+            receiving_txids.append(txid)
+        outputs.add((txid, position, value))
+    window_sources = set()
+    for txid in receiving_txids:
+        window_sources.update(sources.get(txid, ()))
+    value_received = sum(v for _, _, v in outputs)
+    return sorted(window_sources), receiving_txids, value_received
 
 
 def seconds_between(earlier_dt, later_dt):
@@ -234,32 +278,44 @@ def run_once(ch, stats):
     for first_seen, watch, txid in batch:
         by_watch.setdefault(watch["watch_id"], (watch, {}))[1][txid] = first_seen
 
-    # sources_within_window/window_value_received stay per-candidate --
-    # deliberately not batched here. Their own unanchored txid IN (...)
-    # scan is a separate, unresolved schema decision (docs/08-build-plan.md);
-    # this run is only bounded in candidate COUNT, same as the other two
-    # rules, not fixed at the query-shape level. fan_in_consolidation is
-    # left stopped in production until that decision is made.
-    prelim = []  # (watch, txid, sources, receiving_txids, window_start, first_seen, window_seconds_used, value_received)
+    # Two passes, not one per candidate: first decide every window this run
+    # needs, then fetch all of their rows at once -- one address-anchored
+    # read for the receiving side, one full scan for the sources (see
+    # sources_by_txid for why that scan is unavoidable without a schema
+    # change, and why running it per candidate was the bug).
+    pending = []  # (watch, txid, window_start, first_seen, window_seconds_used)
     for watch_id, (watch, watch_candidates) in by_watch.items():
         already = common.already_alerted(ch, RULE_NAME, watch_id, list(watch_candidates.keys()))
         for txid, first_seen in watch_candidates.items():
             if txid in already:
                 continue
-
             window_start = max(
                 first_seen - timedelta(seconds=config.FAN_IN_WINDOW_SECONDS),
                 watch["created_at"],
             )
-            window_seconds_used = seconds_between(window_start, first_seen)
+            pending.append((watch, txid, window_start, first_seen, seconds_between(window_start, first_seen)))
 
-            sources, receiving_txids = sources_within_window(ch, watch["address"], window_start, first_seen)
-            if len(sources) < config.FAN_IN_MIN_SOURCES:
-                stats.skipped_below_min_sources += 1
-                continue
+    ranges = {}  # address -> (earliest window_start, latest window end)
+    for watch, _, window_start, first_seen, _ in pending:
+        lo, hi = ranges.get(watch["address"], (window_start, first_seen))
+        ranges[watch["address"]] = (min(lo, window_start), max(hi, first_seen))
+    range_list = [(a, lo, hi) for a, (lo, hi) in ranges.items()]
 
-            value_received = window_value_received(ch, watch["address"], receiving_txids)
-            prelim.append((watch, txid, sources, receiving_txids, window_start, first_seen, window_seconds_used, value_received))
+    rows_by_address = receiving_rows(ch, range_list) if range_list else {}
+    sources = sources_by_txid(ch, range_list) if rows_by_address else {}
+    seen_keys_by_address = {a: [r[0] for r in rows] for a, rows in rows_by_address.items()}
+
+    prelim = []  # (watch, txid, sources, receiving_txids, window_start, first_seen, window_seconds_used, value_received)
+    for watch, txid, window_start, first_seen, window_seconds_used in pending:
+        address = watch["address"]
+        window_sources, receiving_txids, value_received = window_sources_and_value(
+            rows_by_address.get(address, []), seen_keys_by_address.get(address, []),
+            sources, window_start, first_seen,
+        )
+        if len(window_sources) < config.FAN_IN_MIN_SOURCES:
+            stats.skipped_below_min_sources += 1
+            continue
+        prelim.append((watch, txid, window_sources, receiving_txids, window_start, first_seen, window_seconds_used, value_received))
 
     statuses = common.transaction_statuses(ch, [p[1] for p in prelim])
     alert_batch = [
