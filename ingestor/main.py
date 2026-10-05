@@ -1,6 +1,7 @@
 import signal
 import time
 from dataclasses import dataclass, field
+from typing import Optional
 
 import config
 import confirm
@@ -12,6 +13,10 @@ import watchlist
 import zmq_listener
 from ch_client import CHClient
 from rpc import RPCClient
+
+SHUTDOWN_FLUSH_RETRY_SECONDS = 2.0  # one retry, short backoff -- long enough
+# for a transient ClickHouse hiccup to clear, short enough not to hang a
+# shutdown that's already failing.
 
 LABELS = {
     "C": "block connected",
@@ -35,8 +40,12 @@ class Stats:
     rows_written_flows: int = 0
     batches_flushed: int = 0
     insert_failures: int = 0
-    duplicate_count: int = 0
-    duplicate_flows_count: int = 0
+    # None, not 0, until a shutdown duplicate check actually completes --
+    # 0 means "checked, found none"; unset means the check never ran or
+    # failed (see the finally block in main()), and the two must stay
+    # distinguishable in the printed summary.
+    duplicate_count: Optional[int] = None
+    duplicate_flows_count: Optional[int] = None
     blocks_processed: int = 0
     tx_confirmed: int = 0
     max_block_seconds: float = 0.0
@@ -130,6 +139,36 @@ def process_and_log(rpc, txid, source, stats, persistence, matcher):
         f"unresolved={summary['unresolved']}) outputs={len(summary['outputs'])} "
         f"value={summary['output_value']} fee={fee_display(summary)} dust={summary['dust_count']}"
     )
+
+
+def final_flush(persistence):
+    """Last flush before process exit. persistence.flush() already catches
+    its own exceptions and retains the buffer on failure (persist.py) --
+    it never raises -- so a failed flush is detected by checking whether
+    rows remain buffered afterward, not by catching an exception here.
+    One retry after a short backoff; docs/08-build-plan.md line 435's
+    residual risk (up to ~2s of rows lost if this final flush fails) is
+    closed by the retry and reported honestly either way."""
+    persistence.flush()
+    pending = len(persistence.tx_buffer) + len(persistence.flow_buffer)
+    if pending == 0:
+        print("[main] shutdown: final flush succeeded, no rows lost")
+        return
+
+    print(
+        f"[main] shutdown: final flush failed, {pending} rows still buffered -- "
+        f"retrying once after {SHUTDOWN_FLUSH_RETRY_SECONDS}s"
+    )
+    time.sleep(SHUTDOWN_FLUSH_RETRY_SECONDS)
+    persistence.flush()
+    pending_after = len(persistence.tx_buffer) + len(persistence.flow_buffer)
+    if pending_after == 0:
+        print("[main] shutdown: retry flush succeeded, no rows lost")
+    else:
+        print(
+            f"[main] shutdown: retry flush failed, {pending_after} rows LOST "
+            f"({len(persistence.tx_buffer)} transaction rows, {len(persistence.flow_buffer)} flow rows)"
+        )
 
 
 def main():
@@ -261,10 +300,26 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        persistence.flush()
-        stats.duplicate_count = persist.count_duplicate_transactions(ch)
-        stats.duplicate_flows_count = persist.count_duplicate_flows(ch)
+        final_flush(persistence)
+        # Summary printed before the duplicate checks run, not after --
+        # those checks scan full tables and have taken ClickHouse down
+        # with a memory-cap error during shutdown (docs/08-build-plan.md
+        # line 435), which used to take the summary print down with them.
+        # Nothing below this line can prevent the summary from printing.
         print(f"[main] shutdown: {stats.summary()}")
+
+        try:
+            stats.duplicate_count = persist.count_duplicate_transactions(ch)
+        except Exception as exc:
+            print(f"[main] shutdown: duplicate transaction check failed, leaving duplicate_count unset: {exc}")
+        try:
+            stats.duplicate_flows_count = persist.count_duplicate_flows(ch)
+        except Exception as exc:
+            print(f"[main] shutdown: duplicate flows check failed, leaving duplicate_flows_count unset: {exc}")
+        print(
+            f"[main] shutdown: duplicate_count={stats.duplicate_count} "
+            f"duplicate_flows_count={stats.duplicate_flows_count}"
+        )
 
 
 if __name__ == "__main__":
