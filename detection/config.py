@@ -64,6 +64,14 @@ REQUIRE_NO_CHANGE = os.environ.get("REQUIRE_NO_CHANGE", "true").strip().lower() 
 # at current watch sizes. Collapsing three full-history scans into one is
 # what actually cuts the failure exposure.
 WALLET_DRAIN_SPILL_BYTES = int(os.environ.get("WALLET_DRAIN_SPILL_BYTES", str(100_000_000)))
+# Same pattern as FAN_IN_SCAN_MAX_THREADS below. The merged query still
+# failed 120 times in the 39 hours to 2026-10-07T09:35Z, every one the
+# server-wide (total) cap with OvercommitTracker choosing this query's
+# AggregatingTransform. At the server default (8 threads) each thread holds
+# its own aggregation state; fewer threads means a smaller footprint and so
+# a less likely OvercommitTracker victim. Lowers the odds, does not remove
+# the server-wide cause.
+WALLET_DRAIN_MAX_THREADS = int(os.environ.get("WALLET_DRAIN_MAX_THREADS", "2"))
 
 # Rule 3 (fan-in consolidation), docs/06-detection.md defaults. Global, not
 # per-watch, same reasoning as rule 2's thresholds above.

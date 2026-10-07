@@ -104,7 +104,8 @@ def address_summary(ch, address):
     watch's created_at: this is meant to reflect the address's real
     observed balance, not just movement since it was watched. The GROUP BY
     spills to disk past config.WALLET_DRAIN_SPILL_BYTES rather than holding
-    everything in memory.
+    everything in memory, and runs on config.WALLET_DRAIN_MAX_THREADS
+    threads so its footprint under server-wide pressure stays small.
 
     first_seen is cached per process, keeping the earliest value ever
     returned. With min() now riding along in the same pass the cache saves
@@ -125,7 +126,8 @@ def address_summary(ch, address):
             WHERE address = '{address}'
             GROUP BY direction, txid, position, value
         )
-        SETTINGS max_bytes_before_external_group_by = {config.WALLET_DRAIN_SPILL_BYTES}
+        SETTINGS max_bytes_before_external_group_by = {config.WALLET_DRAIN_SPILL_BYTES},
+                 max_threads = {config.WALLET_DRAIN_MAX_THREADS}
     """)
     row = rows[0] if rows else {}
     total_received = int(row.get("total_received") or 0)
