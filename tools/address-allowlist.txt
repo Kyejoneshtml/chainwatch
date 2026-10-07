@@ -1,0 +1,12 @@
+# Exceptions for tools/check_no_addresses.py.
+#
+# Format: <address> <reason>. A reason is mandatory; the checker refuses an
+# entry without one.
+#
+# Allowed here: strings that identify nobody. BIP-173 / BIP-350 test vectors,
+# and well-known public examples (e.g. the genesis coinbase address) used
+# for illustration. Never a watchlist address, never an address from a real
+# incident, victim or suspect -- those get a label defined in
+# watchlist.local.md instead.
+#
+# Currently empty: no tracked file needs an exception.

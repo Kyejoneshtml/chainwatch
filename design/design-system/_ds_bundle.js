@@ -1412,31 +1412,31 @@ const {
 const TX = [{
   date: '2026-08-09',
   dir: 'in',
-  addr: '3FZbgi29cpjq2GjdwV8eyHuJJnkLtktZc5',
+  addr: '3FakeAddrNotRealIllustrationFake03',
   amt: 0.42100000,
   conf: 3
 }, {
   date: '2026-08-09',
   dir: 'out',
-  addr: '1BoatSLRHtKNngkdXEeobR76b53LETtpyT',
+  addr: '1FakeAddrNotRealIllustrationFake04',
   amt: 0.00000320,
   conf: 0
 }, {
   date: '2026-08-07',
   dir: 'in',
-  addr: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',
+  addr: 'bc1qfakeaddressnotrealjustforexamplefake02',
   amt: 0.05000000,
   conf: 210
 }, {
   date: '2026-08-02',
   dir: 'out',
-  addr: '3M219KR5vEneNb47ewrPfWyb5jQ2DjxRP6',
+  addr: '3FakeAddrNotRealIllustrationFake05',
   amt: 4.80000000,
   conf: 412
 }, {
   date: '2026-07-30',
   dir: 'in',
-  addr: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh',
+  addr: 'bc1qfakeaddressnotrealjustforexamplefake01',
   amt: 1.00000000,
   conf: 890
 }];
@@ -1518,7 +1518,7 @@ function AddressOverview({
       marginBottom: 'var(--space-12)'
     }
   }, /*#__PURE__*/React.createElement(AddressLabel, {
-    address: "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh"
+    address: "bc1qfakeaddressnotrealjustforexamplefake01"
   }), /*#__PURE__*/React.createElement(Button, {
     variant: "primary"
   }, "watch this address")), /*#__PURE__*/React.createElement("div", {
@@ -1801,31 +1801,31 @@ const {
 } = NS;
 const ALERTS = [{
   id: 1,
-  addr: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh',
+  addr: 'bc1qfakeaddressnotrealjustforexamplefake01',
   sev: 'critical',
   desc: 'wallet swept, no change output',
   time: '2m ago'
 }, {
   id: 2,
-  addr: '3FZbgi29cpjq2GjdwV8eyHuJJnkLtktZc5',
+  addr: '3FakeAddrNotRealIllustrationFake03',
   sev: 'high',
   desc: 'fan-in from 14 sources in 1 hour',
   time: '11m ago'
 }, {
   id: 3,
-  addr: '1BoatSLRHtKNngkdXEeobR76b53LETtpyT',
+  addr: '1FakeAddrNotRealIllustrationFake04',
   sev: 'medium',
   desc: 'output dormant 5 years before spend',
   time: '38m ago'
 }, {
   id: 4,
-  addr: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',
+  addr: 'bc1qfakeaddressnotrealjustforexamplefake02',
   sev: 'medium',
   desc: 'inbound from address with no prior history',
   time: '1h ago'
 }, {
   id: 5,
-  addr: '3M219KR5vEneNb47ewrPfWyb5jQ2DjxRP6',
+  addr: '3FakeAddrNotRealIllustrationFake05',
   sev: 'low',
   desc: 'first transaction on address',
   time: '3h ago'
@@ -1966,17 +1966,17 @@ const {
 } = NS;
 const TX = [{
   txid: 'f4a1c9e2b7d3a6f01e5c8b9d2a4f6e8c1b3d5a7f9e0c2b4d6a8f0e2c4b6a8d0e',
-  addr: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh',
+  addr: 'bc1qfakeaddressnotrealjustforexamplefake01',
   amt: 0.42100000,
   conf: 0
 }, {
   txid: 'a2b4c6d8e0f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2b4',
-  addr: '3FZbgi29cpjq2GjdwV8eyHuJJnkLtktZc5',
+  addr: '3FakeAddrNotRealIllustrationFake03',
   amt: 0.00000320,
   conf: 3
 }, {
   txid: 'c6d8e0f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2b4c6d8',
-  addr: '1BoatSLRHtKNngkdXEeobR76b53LETtpyT',
+  addr: '1FakeAddrNotRealIllustrationFake04',
   amt: 1.00000000,
   conf: 210
 }];
@@ -2255,19 +2255,19 @@ const EVENTS = [{
   time: '14:32',
   relative: '4 hours ago',
   detail: '0.42 BTC in one transaction',
-  addresses: ['bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh']
+  addresses: ['bc1qfakeaddressnotrealjustforexamplefake01']
 }, {
   kind: 'past',
   sentence: 'Split across 3 addresses',
   time: '14:33',
   detail: '0.31 BTC, 0.08 BTC, 0.03 BTC',
-  addresses: ['3FZbgi29cpjq2GjdwV8eyHuJJnkLtktZc5', 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq', '3M219KR5vEneNb47ewrPfWyb5jQ2DjxRP6']
+  addresses: ['3FakeAddrNotRealIllustrationFake03', 'bc1qfakeaddressnotrealjustforexamplefake02', '3FakeAddrNotRealIllustrationFake05']
 }, {
   kind: 'past',
   sentence: 'Largest amount moved again',
   time: '16:10',
   detail: '0.31 BTC to a single address',
-  addresses: ['1BoatSLRHtKNngkdXEeobR76b53LETtpyT'],
+  addresses: ['1FakeAddrNotRealIllustrationFake04'],
   inference: {
     label: 'This address appears to belong to an exchange',
     percent: 78
@@ -2277,7 +2277,7 @@ const EVENTS = [{
   sentence: 'One smaller amount could not be followed',
   time: '16:14',
   detail: '0.03 BTC passed through a service that does not publish its records. We cannot say where it went next.',
-  addresses: ['3M219KR5vEneNb47ewrPfWyb5jQ2DjxRP6']
+  addresses: ['3FakeAddrNotRealIllustrationFake05']
 }, {
   kind: 'current',
   sentence: 'Nothing further in 2 hours',

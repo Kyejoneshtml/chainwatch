@@ -8,7 +8,7 @@ const EVENTS = [
     time: '14:32',
     relative: '4 hours ago',
     detail: '0.42 BTC in one transaction',
-    addresses: ['bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh'],
+    addresses: ['bc1qfakeaddressnotrealjustforexamplefake01'],
   },
   {
     kind: 'past',
@@ -16,9 +16,9 @@ const EVENTS = [
     time: '14:33',
     detail: '0.31 BTC, 0.08 BTC, 0.03 BTC',
     addresses: [
-      '3FZbgi29cpjq2GjdwV8eyHuJJnkLtktZc5',
-      'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',
-      '3M219KR5vEneNb47ewrPfWyb5jQ2DjxRP6',
+      '3FakeAddrNotRealIllustrationFake03',
+      'bc1qfakeaddressnotrealjustforexamplefake02',
+      '3FakeAddrNotRealIllustrationFake05',
     ],
   },
   {
@@ -26,7 +26,7 @@ const EVENTS = [
     sentence: 'Largest amount moved again',
     time: '16:10',
     detail: '0.31 BTC to a single address',
-    addresses: ['1BoatSLRHtKNngkdXEeobR76b53LETtpyT'],
+    addresses: ['1FakeAddrNotRealIllustrationFake04'],
     inference: { label: 'This address appears to belong to an exchange', percent: 78 },
   },
   {
@@ -34,7 +34,7 @@ const EVENTS = [
     sentence: 'One smaller amount could not be followed',
     time: '16:14',
     detail: '0.03 BTC passed through a service that does not publish its records. We cannot say where it went next.',
-    addresses: ['3M219KR5vEneNb47ewrPfWyb5jQ2DjxRP6'],
+    addresses: ['3FakeAddrNotRealIllustrationFake05'],
   },
   {
     kind: 'current',

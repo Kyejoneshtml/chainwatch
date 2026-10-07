@@ -2,11 +2,11 @@ const NS = window.ChainwatchDesignSystem_f0e832;
 const { SeverityBadge, LiveIndicator, Input, Select, AddressLabel } = NS;
 
 const ALERTS = [
-  { id: 1, addr: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh', sev: 'critical', desc: 'wallet swept, no change output', time: '2m ago' },
-  { id: 2, addr: '3FZbgi29cpjq2GjdwV8eyHuJJnkLtktZc5', sev: 'high', desc: 'fan-in from 14 sources in 1 hour', time: '11m ago' },
-  { id: 3, addr: '1BoatSLRHtKNngkdXEeobR76b53LETtpyT', sev: 'medium', desc: 'output dormant 5 years before spend', time: '38m ago' },
-  { id: 4, addr: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq', sev: 'medium', desc: 'inbound from address with no prior history', time: '1h ago' },
-  { id: 5, addr: '3M219KR5vEneNb47ewrPfWyb5jQ2DjxRP6', sev: 'low', desc: 'first transaction on address', time: '3h ago' },
+  { id: 1, addr: 'bc1qfakeaddressnotrealjustforexamplefake01', sev: 'critical', desc: 'wallet swept, no change output', time: '2m ago' },
+  { id: 2, addr: '3FakeAddrNotRealIllustrationFake03', sev: 'high', desc: 'fan-in from 14 sources in 1 hour', time: '11m ago' },
+  { id: 3, addr: '1FakeAddrNotRealIllustrationFake04', sev: 'medium', desc: 'output dormant 5 years before spend', time: '38m ago' },
+  { id: 4, addr: 'bc1qfakeaddressnotrealjustforexamplefake02', sev: 'medium', desc: 'inbound from address with no prior history', time: '1h ago' },
+  { id: 5, addr: '3FakeAddrNotRealIllustrationFake05', sev: 'low', desc: 'first transaction on address', time: '3h ago' },
 ];
 
 function AlertsFeed({ onSelect }) {

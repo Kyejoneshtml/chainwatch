@@ -231,6 +231,26 @@ the code disagree first.
    recorded there with the actual cause, not just the symptom — and don't
    restart until you understand what happened.
 
+## Before committing anything
+
+The repository is public, and no Bitcoin address may appear in it
+(`docs/16-security-posture.md`, section C). One check enforces this:
+
+    python3 tools/check_no_addresses.py     # exit 0 = clean
+
+It runs automatically as the pre-commit hook once hooks are enabled. Do
+this once per clone:
+
+    git config core.hooksPath .githooks
+
+If it flags something in `docs/`, replace the address with a label and add
+the mapping to `watchlist.local.md` (gitignored). If it flags something in
+`design/`, usually after a Claude Design re-export, run
+`python3 tools/scrub_design_addresses.py`, then rerun the check. Don't
+silence it with `--no-verify`, and don't add real addresses to
+`tools/address-allowlist.txt`. That list is for BIP test vectors and
+well-known public examples only.
+
 ## Things that are deliberate, not bugs
 
 - `address_stats` no longer updates. This was deliberate

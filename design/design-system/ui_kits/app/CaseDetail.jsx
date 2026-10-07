@@ -2,9 +2,9 @@ const NS = window.ChainwatchDesignSystem_f0e832;
 const { SeverityBadge, ConfirmationBadge, AddressLabel, MonetaryAmount, DataTable, Button, Card } = NS;
 
 const TX = [
-  { txid: 'f4a1c9e2b7d3a6f01e5c8b9d2a4f6e8c1b3d5a7f9e0c2b4d6a8f0e2c4b6a8d0e', addr: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh', amt: 0.42100000, conf: 0 },
-  { txid: 'a2b4c6d8e0f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2b4', addr: '3FZbgi29cpjq2GjdwV8eyHuJJnkLtktZc5', amt: 0.00000320, conf: 3 },
-  { txid: 'c6d8e0f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2b4c6d8', addr: '1BoatSLRHtKNngkdXEeobR76b53LETtpyT', amt: 1.00000000, conf: 210 },
+  { txid: 'f4a1c9e2b7d3a6f01e5c8b9d2a4f6e8c1b3d5a7f9e0c2b4d6a8f0e2c4b6a8d0e', addr: 'bc1qfakeaddressnotrealjustforexamplefake01', amt: 0.42100000, conf: 0 },
+  { txid: 'a2b4c6d8e0f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2b4', addr: '3FakeAddrNotRealIllustrationFake03', amt: 0.00000320, conf: 3 },
+  { txid: 'c6d8e0f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2b4c6d8', addr: '1FakeAddrNotRealIllustrationFake04', amt: 1.00000000, conf: 210 },
 ];
 
 function CaseDetail({ alert, onBack }) {

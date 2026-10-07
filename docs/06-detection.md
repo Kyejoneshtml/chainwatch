@@ -89,7 +89,7 @@ Flagged transactions are excluded from clustering and any trace passing through 
 
 An attacker generates a vanity address closely resembling one the victim uses, typically matching four or five characters at each end, then sends a zero-value transaction so the lookalike appears in the victim's history.
 
-A documented case: `bc1qr9wuw4zkjflet80lr9cr5ec8620c4fg52wua0h` fooled `bc1qr9xkxanfstzqpfd5ce0t3evwc45pnmsr2wua0h` out of 0.1 BTC.
+A documented case (Lopp; see `14-tracing-adversarial.md`): a lookalike, address P, fooled the owner of address Q out of 0.1 BTC. The two bech32 strings are identical in their first six characters (only two past the fixed `bc1q`) and their last six. Labels only: the strings are real, checksum-valid mainnet addresses from a public write-up, kept out of this public repository per `16-security-posture.md` section C, and mapped in `watchlist.local.md` (gitignored).
 
 **Detection:** near-identical addresses in a watched address's history are flagged and the user warned explicitly. The differing characters are highlighted.
 

@@ -100,9 +100,9 @@ The third turns a defensive measure into a user-facing feature, and it is genuin
 
 Different attack, similar family. The attacker generates a vanity address closely resembling one the victim uses, typically matching four or five characters at each end, then sends a zero or near-zero value transaction so the lookalike appears in the victim's history. The hope is that the victim later copies the wrong address.
 
-Lopp documented a real success: address `bc1qr9wuw4zkjflet80lr9cr5ec8620c4fg52wua0h` fooled `bc1qr9xkxanfstzqpfd5ce0t3evwc45pnmsr2wua0h` into sending 0.1 BTC.
+Lopp documented a real success: a lookalike, address P, fooled the owner of address Q into sending 0.1 BTC. (Labels only: both are real, checksum-valid mainnet addresses, confirmed with the node's `validateaddress` on 2026-10-07. They are not invented illustrations, so they are kept out of this public repository per `16-security-posture.md` section C and mapped in `watchlist.local.md`, gitignored. A random string passes a bech32 checksum about once in a billion tries, so these were not made up for the example. Matching characters at both ends *and* a valid checksum takes vanity grinding, which is the attack itself.)
 
-Look at those two strings. They share the first ten characters and the last six.
+The two strings share their first six characters and their last six. Only two of the six leading characters are chosen, since every native SegWit v0 address starts `bc1q`. The middle 30 differ. (Corrected 2026-10-07: this previously said "the first ten", which was wrong. Measured directly on the two strings.)
 
 **This is a direct validation of a design decision already taken.** `10-design-system.md` specifies that addresses truncate in the *middle*, never at the end, because both ends matter for visual verification. Address poisoning is precisely the attack that exploits truncation. The decision was correct and now has a documented threat behind it.
 

@@ -1,0 +1,5 @@
+#!/bin/sh
+# Blocks a commit that would put a real Bitcoin address into a tracked file.
+# See tools/check_no_addresses.py. Enable once per clone:
+#   git config core.hooksPath .githooks
+exec python3 "$(git rev-parse --show-toplevel)/tools/check_no_addresses.py"

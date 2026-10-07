@@ -72,6 +72,17 @@ Three reasons, each sufficient alone.
 
 **Correct labelling carries its own risk.** Doxxing research finds "the primary target of doxing, particularly when it involves a physical extortion component, is for finance." Publicly naming addresses controlled by people who steal for a living, as a named individual at a known location with no institutional backing, is an asymmetric position.
 
+### Design and prototype assets are public pages too
+
+Added 2026-10-07, because this was the case the rule above missed. "No address is ever named on a public page" applies to every artifact in this repository and anything published from it: docs, code, test fixtures, design-system exports, UI kits, mockups, prototypes and screenshots. It is not limited to a deployed product page. A mockup in a public repository is a page a stranger can load.
+
+What happened: the design-system export in `design/design-system/` shipped with five real mainnet addresses as example data, in plain JSX and HTML and inside the prototype's gzip-compressed script bundle. **Four of the five were live at the time of discovery.** All four had transactions in this project's own ingested `flows`, and the busiest had 13, the latest on 2026-10-06. They were displayed beside fraud-alert wording: "wallet swept, no change output", "fan-in from 14 sources in 1 hour", and a position in the victim's trace timeline, under "Your funds left your wallet". That is an identity-adjacent claim about whoever controls those addresses, made on a public page: exactly what this section prohibits. The same review found seven more addresses named in `docs/` (five watchlist or example addresses in `08-build-plan.md`, and one address-poisoning pair in `06` and `14`). They are replaced with labels mapped only in the gitignored `watchlist.local.md`. The earlier commits that contain them have not been rewritten; that is a separate decision.
+
+The rule as now enforced:
+- **Example data uses placeholders that are obviously fake to a human reader**, not merely invalid. They keep the same format and length so layout is unaffected (`bc1qfake…fake01`).
+- **Real addresses discussed in documentation get a stable label** ("watch A", "address P"), mapped in `watchlist.local.md` only.
+- **A check enforces it:** `tools/check_no_addresses.py` runs as the `.githooks/pre-commit` hook and is named in `ingestor/RUNBOOK.md`. It scans every tracked file, including `design/`, with no path exclusions, and it decodes embedded base64 and gzip payloads. Its exception list, `tools/address-allowlist.txt`, takes only BIP-173/350 test vectors and well-known public examples, each with a one-line reason.
+
 ### What is published
 
 The tool itself, the source code, the methodology, the measured error rates, and aggregate statistics about the system's own operation. None of that names anyone.

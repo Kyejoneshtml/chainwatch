@@ -2,11 +2,11 @@ const NS = window.ChainwatchDesignSystem_f0e832;
 const { Button, Card, AddressLabel, MonetaryAmount, SeverityBadge, ConfirmationBadge, LiveIndicator } = NS;
 
 const TX = [
-  { date: '2026-08-09', dir: 'in', addr: '3FZbgi29cpjq2GjdwV8eyHuJJnkLtktZc5', amt: 0.42100000, conf: 3 },
-  { date: '2026-08-09', dir: 'out', addr: '1BoatSLRHtKNngkdXEeobR76b53LETtpyT', amt: 0.00000320, conf: 0 },
-  { date: '2026-08-07', dir: 'in', addr: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq', amt: 0.05000000, conf: 210 },
-  { date: '2026-08-02', dir: 'out', addr: '3M219KR5vEneNb47ewrPfWyb5jQ2DjxRP6', amt: 4.80000000, conf: 412 },
-  { date: '2026-07-30', dir: 'in', addr: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh', amt: 1.00000000, conf: 890 },
+  { date: '2026-08-09', dir: 'in', addr: '3FakeAddrNotRealIllustrationFake03', amt: 0.42100000, conf: 3 },
+  { date: '2026-08-09', dir: 'out', addr: '1FakeAddrNotRealIllustrationFake04', amt: 0.00000320, conf: 0 },
+  { date: '2026-08-07', dir: 'in', addr: 'bc1qfakeaddressnotrealjustforexamplefake02', amt: 0.05000000, conf: 210 },
+  { date: '2026-08-02', dir: 'out', addr: '3FakeAddrNotRealIllustrationFake05', amt: 4.80000000, conf: 412 },
+  { date: '2026-07-30', dir: 'in', addr: 'bc1qfakeaddressnotrealjustforexamplefake01', amt: 1.00000000, conf: 890 },
 ];
 
 const FACTORS = [
@@ -37,7 +37,7 @@ function AddressOverview({ onBack }) {
       <button onClick={onBack} style={{ border: 'none', background: 'none', color: 'var(--text-primary)', textDecoration: 'underline', fontSize: 'var(--text-body-small-size)', cursor: 'pointer', padding: 0, marginBottom: 'var(--space-6)' }}>&larr; back</button>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-12)' }}>
-        <AddressLabel address="bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh" />
+        <AddressLabel address="bc1qfakeaddressnotrealjustforexamplefake01" />
         <Button variant="primary">watch this address</Button>
       </div>
 

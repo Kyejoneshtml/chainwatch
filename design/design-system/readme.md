@@ -4,6 +4,17 @@ Chainwatch is a real-time Bitcoin fraud analytics product: a light, high-legibil
 
 **Sources.** No codebase, Figma file, or slide deck was attached for this project. This design system was authored directly from a written brand/design brief provided in chat (colour, type, spacing, component and content rules) — there is no external repo or Figma link to record. If a codebase or Figma file exists for Chainwatch, attach it and this system should be reconciled against it.
 
+## Example addresses are placeholders, by policy
+
+**Every Bitcoin address in this export is a deliberate fake.** Examples: `bc1qfakeaddressnotrealjustforexamplefake01`, `1FakeAddrNotRealIllustrationFake03`. Each keeps the length and type prefix of a real address, so layout and middle-ellipsis truncation behave the same, but it says so at both visible ends and can never be valid.
+
+**The source of this export is in Claude Design, not in this repository.** `_ds_bundle.js` and `Chainwatch App Prototype.html` are generated from it, and so are the component and UI-kit files. The first exports contained five real, live mainnet addresses, shown beside fraud-alert wording and inside the victim trace timeline. They were replaced in the repository copy on 2026-10-07. **If the Claude Design source still contains real addresses, the next re-export silently brings them back.** After every re-export, before committing:
+
+1. `python3 tools/scrub_design_addresses.py`: replaces any valid address under `design/` with a placeholder, including inside the prototype's gzip-compressed script payloads.
+2. `python3 tools/check_no_addresses.py`: must exit 0. The pre-commit hook runs this too.
+
+Better still, change the Claude Design source to use placeholders so the export arrives clean. Policy: `docs/16-security-posture.md`, section C.
+
 ## Two governing principles
 
 **Colour carries meaning, never decoration.** The palette is narrow. Red appears only for critical severity — nothing else competes for that signal.
