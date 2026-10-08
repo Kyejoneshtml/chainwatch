@@ -513,6 +513,63 @@ If ClickHouse is competitive, Neo4j is removed and the stack simplifies consider
 
 **Time:** half a day.
 
+#### Pre-registration, written and committed 2026-10-08 before any benchmark run
+
+This section is fixed before any timing run, and its commit predates every result below it. Results are recorded afterwards in a separate subsection. Nothing in this one is edited after the fact.
+
+**Why ClickHouse is run more than once.** `flows` is `ORDER BY (address, direction, position, txid)`. A trace looks up a spending transaction's inputs and outputs by `txid`, which is not a prefix of that key. So every hop's `txid IN (...)` reads the whole `txid` column: 5.11 GiB compressed on 2026-10-08, the same fault as rule 3's run explosion (Known issues). A naive recursive query would lose because the schema was never built for traversal, not because of ClickHouse. A result that measured only that would prove nothing about whether Neo4j is needed. Variants:
+
+| Variant | Store | Data it reads |
+|---|---|---|
+| **CH-A** | ClickHouse, schema as it stands | full archive: `flows` + `transactions FINAL` |
+| **CH-B** | ClickHouse + txid access path | full archive: `flows` for the address-anchored link step, `bench_flows_by_txid` for the per-txid steps, `transactions FINAL` |
+| **CH-S** | ClickHouse, identical subgraph only | `bench_sub_*` tables holding exactly the rows Neo4j holds, in both orderings |
+| **NEO** | Neo4j Community 5 | the identical subgraph, in `05-data-models.md`'s model (`Address`, `Transaction`, `FUNDED`, `PAID`, uniqueness constraints before load) |
+
+CH-A and CH-B run over the full archive because that is what "remove Neo4j" means: ClickHouse traces directly, with no materialisation step. CH-S and NEO see byte-identical data: the subgraph is defined as every row the trace reads, so neither can see anything the other can't. The decision compares **CH-B against NEO**. That comparison favours Neo4j, since it gets a perfectly pruned subgraph while CH-B searches 94M rows, and the result says so either way.
+
+**Access path chosen: a separate txid-keyed table, `chainwatch.bench_flows_by_txid`**, columns `(txid, direction, position, address, value)`, `ORDER BY (txid, direction, position)`, filled by `INSERT SELECT` from `flows`.
+- Not a projection: that alters production `flows`, needs `deduplicate_merge_projection_mode` on a `ReplacingMergeTree`, and duplicates every column.
+- Not a bloom filter: that also alters `flows`, and one txid's rows are spread across up to (inputs + outputs) granules, so a frontier of hundreds of txids drifts back toward a full scan. That is the same reason a bloom index on `address` was measured and rejected in the `flows` redesign above.
+- A separate table leaves `flows` untouched, matches the traversal key exactly, and has a disk cost that can be measured. In production it would need a second write path (or materialized view) from the ingestor. That is part of its cost and is recorded with the result.
+
+**The trace.** One real, active watched address. One of its own outgoing transactions is the source event, and every satoshi it spent is tainted.
+- **Source selection rule, fixed now:** active watches in `watchlist` `created_at` order. For each, take its most recent outgoing transaction in `flows`. Use the first whose trace leaves at least one tainted range at hop 6. Selection uses correctness runs only, never timings.
+- **Six hops:** hop 1 is the source transaction's tainted outputs; hop *k* is the outputs of the transactions spending hop *k−1*'s tainted outputs.
+- **FIFO, per Clayton's Case (`01-thesis.md`):**
+  - Inputs are laid end to end in `vin` order and outputs in `vout` order. Satoshi *n* of the input side is satoshi *n* of the output side.
+  - Satoshis past the total output value are the fee, recorded as a terminal "fee" range.
+  - Taint is a satoshi range `[lo, hi)` within a specific output, never a proportion. One output can carry several ranges, each a separate row, which makes FIFO lossless.
+- **Output-to-spender link:** `flows` stores no previous outpoint for an input, so the only link this schema allows is `(address, value)`: the `in` row with the tainted output's address and exact value, in a different transaction. `05-data-models.md`'s `FUNDED {value}` relationship is the same link. Exactly one candidate means linked; zero means unspent or unseen (terminal); more than one means ambiguous (terminal, flagged, never guessed).
+- **Further terminal rules:** a spending transaction whose observed input or output row count differs from `transactions.input_count` / `output_count` is "incomplete", because its FIFO offsets would be wrong, and taint stops there. An output with an empty address is terminal.
+- **Every engine applies the same rules.** Every link in the subgraph is checked against the node (`getrawtransaction` with blockhash, within the prune window) and the mismatch count is recorded. That validates the schema's link rule, not either engine.
+
+**Execution.**
+- **Shape:** each engine computes FIFO in the engine, one query per hop, six hops driven by the same Python harness, frontier passed as parameters.
+- **Runs:** 7 complete traces per variant. The first is discarded as cold. Report the median and spread (min–max) of the 6 warm runs, as end-to-end client wall time and as summed engine-side time (`query_log.query_duration_ms`; Neo4j `result_available_after + result_consumed_after`).
+- **Correctness:** every run's output (every `(hop, txid, vout, lo, hi)` range and every terminal) must equal across all four variants.
+- **Machine:** soak stopped; only `bitcoind` and `clickhouse` running, plus the Neo4j container during its own runs. Each variant runs alone.
+
+**Memory, measured, not assumed.**
+- **ClickHouse:** peak `memory_usage` per hop from `system.query_log`. Timed queries run as the production `ingestor` user, so its 1,000,000,000-byte per-query cap and the 2,900,000,000-byte server cap both apply. Any memory error fails that variant.
+- **Neo4j's budget:** the Docker VM has 7.75 GiB. bitcoind uses **2.83 GiB** (measured 2026-10-08, more than the ~2 GiB previously assumed). ClickHouse's cap is 2.70 GiB, and the VM's 1 GiB swap is already full. That leaves about 2.2 GiB, so Neo4j runs as a standalone container (`docker-compose.yml` untouched) with a **hard 2 GiB limit and swap disabled**: heap 1 GiB, page cache 512 MiB. Neo4j's peak is reported from the container's cgroup `memory.peak`, after a restart that separates the query phase from the load, plus per-query allocated bytes from its query log. If Neo4j cannot finish a 6-hop trace inside that limit, that is the result: faster-but-doesn't-fit is a reason to drop it.
+
+**Winner condition.** Two rules are recorded and both are evaluated. If they disagree, the disagreement is reported and the decision is left to the project owner, not resolved by whoever ran the benchmark.
+
+- **Rule 1, as proposed by the project owner:** ClickHouse wins and Neo4j is removed if CH-B's median 6-hop trace is **within 3× of NEO's** and CH-B completes inside its existing memory caps.
+- **Rule 2, amended:** ClickHouse wins and Neo4j is removed if all of:
+  1. **correct:** CH-B's output is identical to NEO's;
+  2. **fits:** zero memory errors in CH-B's 7 runs under the existing caps;
+  3. **fast enough:** CH-B's median is **≤ 10 s**, or it is **within 3× of NEO's and ≤ 60 s**.
+
+  Neo4j is also dropped, whatever the timings, if it cannot complete the trace inside its 2 GiB limit.
+
+  Why amend: Rule 1's stated rationale is absolute ("a correct graph within a minute… anything comfortably inside that is fast enough"), but the rule itself is a ratio. That fails both ways. At NEO 20 ms against CH-B 400 ms it keeps a whole database over a gap no user would notice. At NEO 30 s against CH-B 80 s it removes Neo4j and leaves a trace over the budget. 10 s is a sixth of the one-minute done condition, leaving the rest for rendering and, in Neo4j's case, materialisation.
+
+**Not counted in the timed comparison, reported separately:** the cost of building Neo4j's subgraph, which in production is a ClickHouse full-archive expansion plus a bulk load (`05-data-models.md`, the bridge), and the disk cost of CH-B's access path.
+
+**Stated limitation, before seeing results:** this is one trace from one address. Its frontier size per hop is reported, because how fast it fans out decides how far the figures generalise.
+
 ### 5b. If Neo4j survives
 
 - Constraints applied before any data load
