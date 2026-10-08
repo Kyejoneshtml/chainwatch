@@ -570,6 +570,74 @@ CH-A and CH-B run over the full archive because that is what "remove Neo4j" mean
 
 **Stated limitation, before seeing results:** this is one trace from one address. Its frontier size per hop is reported, because how fast it fans out decides how far the figures generalise.
 
+#### Results, recorded 2026-10-08 after the runs
+
+**Conditions.**
+- **Machine:** the soak's four processes stopped at 14:36:29Z, before any run. Nothing wrote to `flows` afterwards: 94,067,586 rows, the same count as `bench_flows_by_txid`. No ClickHouse merges were running.
+- **Engines:** Neo4j was stopped during the ClickHouse runs, and ClickHouse was idle during Neo4j's.
+- **Code:** `bench/phase5a/` (`trace_bench.py`, `setup_subgraph.py`). Raw results, which name addresses, are kept outside the repository.
+
+**Source.** The pre-registered rule selected the **10th** active watch. The first nine all stopped before hop 6, and why is itself a finding about the data:
+
+| Why the trace stopped | Watches |
+|---|---|
+| Source transaction `incomplete`: observed input rows didn't match `transactions.input_count`. Both were seen minutes before shutdown, probably still pending with parent-pending inputs, which by design are not written | 2 |
+| `ambiguous` at hop 2: all 14 tainted outputs had several `(address, value)` candidates, so the schema's link rule refused to guess | 1 |
+| `unspent`: the funds had not moved before the data ends | 6 |
+| Hop 6 reached, but the last link was ambiguous | 1 (the 7th watch, so not selected) |
+
+**The selected trace is a single-range chain.** Rows per hop: 2, 1, 1, 1, 1, 1. That is one tainted range per hop plus one fee row at hop 1. **It tests per-hop lookup latency, not fan-out.**
+- **Links:** all 5 links it used were checked against the node's real previous outpoints, with 0 mismatches.
+- **Identical subgraph, in both CH-S and NEO:** 67 nodes (61 `Address`, 6 `Transaction`) and 121 relationships (94 `FUNDED`, 27 `PAID`), matching `bench_sub_flows` row for row (94 `in`, 27 `out`).
+- **Correctness:** every run of every variant produced output identical to the reference, range for range.
+
+**Access path cost.** Building `bench_flows_by_txid` took 38.7 s and 148 MiB peak memory, and it takes **4.07 GiB** on disk.
+- Sorted by txid, the `txid` column compresses from 5.11 GiB to 1.96 GiB, while `address` grows from 0.67 GiB to 1.67 GiB.
+- The first attempt, with 4 insert threads, exceeded the 1 GB per-query cap and wrote nothing.
+- In production, this table would also need its own write path from the ingestor.
+
+**Timings.** 7 runs each, first discarded as cold. Times are end-to-end client wall time for all 6 hops. "Peak query memory" is the maximum per-query `memory_usage` across all 7 runs.
+
+| Variant | Median | Spread (min–max) | Cold run | Peak query memory | Data read per trace | Failures |
+|---|---|---|---|---|---|---|
+| CH-A, schema as it stands (v2) | **3.727 s** | 3.691–3.805 s | 4.393 s | 89.1 MB | 23.8 GB | 0 |
+| CH-B, txid access path (v2) | **1.047 s** | 1.036–1.087 s | 1.143 s | 82.4 MB | 0.274 GB | 0 |
+| CH-S, identical subgraph (v2) | **0.948 s** | 0.934–0.975 s | 1.042 s | 79.7 MB | 0.8 MB | 0 |
+| NEO, identical subgraph | **0.031 s** | 0.027–0.050 s | 1.428 s | 3–20 KB per query (`PROFILE` GlobalMemory); container peak **1.48 GiB** of a 2 GiB hard limit, 0 OOM kills | n/a | 0 |
+| *CH-A, first formulation (v1)* | *8.509 s* | *8.312–8.568 s* | *13.27 s* | *335 MB* | *71.4 GB* | *0* |
+| *CH-B, first formulation (v1)* | *1.841 s* | *1.830–1.848 s* | *1.906 s* | *66 MB* | *0.773 GB* | *0* |
+| *CH-S, first formulation (v1)* | *1.570 s* | *1.568–1.617 s* | *1.692 s* | *417 MB* | *2.2 MB* | *0* |
+
+**Why there are two ClickHouse formulations.** v1 was run first and is kept on the record. It emitted its three row kinds (ranges, fees, incompletes) as three `UNION ALL` branches. ClickHouse inlines CTEs, so each branch re-ran the whole link-and-propagate chain. That showed up as a fixed ~270 ms per hop even on CH-S's 121 rows: the link stage alone took 9 ms and the propagation stage 67 ms, measured stage by stage. v2 computes the chain once and emits all three kinds from one branch. The output is identical, and it cut CH-A's reads per trace from 71.4 GB to 23.8 GB. That was a structural flaw in the query as written, not tuning. v2 still carries roughly 150 ms per hop of fixed overhead from nested CTE references, and no further ClickHouse tuning was done. Neo4j's query was not tuned at all, and did not need to be.
+
+**What the numbers show.**
+- **The 33× gap is per-query overhead, not data access.** CH-S, reading 0.8 MB of identical data, is 30× NEO. The full-archive CH-B is only 10% slower than CH-S. ClickHouse pays roughly 150 ms of fixed planning and execution cost per hop query; Neo4j pays about 5 ms. Inference from one trace: that gap would not obviously widen with graph size, but a high-fan-out trace was not tested.
+- **The access path does what it was built for.** CH-A reads the whole `txid` column on every hop (~4 GB uncompressed per hop), so its cost grows with the archive. CH-B's lookups go through the primary key, and its 0.27 GB per trace is mostly the address-anchored link step on large addresses.
+- **Even the schema as it stands is fast enough for this trace.** CH-A at 3.7 s is inside a 10 s threshold, but only because the frontier is one range per hop. It costs a full column scan per hop, whatever the frontier size.
+
+**Memory, against the budget.**
+- **ClickHouse:** every variant stayed far under the 1 GB per-query cap. Zero memory errors in 42 timed traces, plus 21 more under v1.
+- **Neo4j:** it fits, but its cost is fixed rather than per query: about 1.36–1.48 GiB held permanently by heap and page cache reservations, whatever the graph size. With all three engines up, the VM had 2.43 GiB available and swap fully used. With ClickHouse at its 2.70 GiB cap, that leaves about 1.2 GiB.
+
+**Decision.**
+- **Rule 1 (project owner's), not met.** CH-B's median is 33.4× NEO's (58.8× under v1), past 3×. **Neo4j stays.**
+- **Rule 2 (amended), met.** CH-B is correct (identical output), fits (0 memory errors, 82 MB peak), and is fast enough (1.047 s ≤ 10 s). **Neo4j is removed.**
+- **The two rules disagree. As pre-registered, the decision is the project owner's.** Neither rule is overridden here.
+
+**Considerations for that decision (the benchmarker's view, not a result).** Everything below sits outside the timed comparison.
+1. **First-trace latency favours ClickHouse alone.** Neo4j's subgraph has to be built first: a ClickHouse expansion (bridge step 3), then a load (1.2 s for this 121-relationship subgraph). So a newly created watch gets its first trace sooner from CH-B (1.05 s) than from Neo4j (≥ CH-B's expansion + load + 0.03 s). Neo4j wins only on repeated traces over a subgraph that is already materialised.
+2. **The resource trade.** Neo4j permanently costs ~1.4 GiB of RAM, on a VM where every failure so far has been memory. The access path costs 4.07 GiB of disk and a second write path.
+3. **The ratio rule is measuring per-query overhead** that does not matter against a one-minute budget. That is the scenario the amendment was written for.
+4. **The limit that cuts against all of this:** one trace, frontier size 1. A wide trace, one hitting an exchange consolidation or a batch payout, is untested. ClickHouse's per-hop overhead would amortise across a larger frontier, but Neo4j's index-backed expansion might also hold up better. Running a second, high-fan-out trace before removing anything would be the cheap way to close that gap.
+
+**Found along the way, independent of the engine choice.**
+- **`flows` does not store an input's previous outpoint** (`decode.py` has it and discards it). Every link is therefore `(address, value)`, which is correct for all 5 links checked here but refused to link 14 of 14 outputs on another watch. `05-data-models.md`'s Neo4j model has the same gap. Exact FIFO tracing at scale needs `prev_txid` and `prev_vout` stored on `in` rows, whichever engine is kept.
+- **Neo4j Community has no query log.** Per-query memory here came from `PROFILE` instead.
+
+**Left in place, not removed.** Removing any of these needs explicit confirmation:
+- **ClickHouse tables:** `chainwatch.bench_flows_by_txid` (4.07 GiB) and `chainwatch.bench_sub_flows`, `bench_sub_flows_by_txid`, `bench_sub_tx`.
+- **Neo4j:** the `chainwatch-neo4j-bench` container (stopped) and the `neo4j:5.26-community` image (1.01 GB).
+
 ### 5b. If Neo4j survives
 
 - Constraints applied before any data load
